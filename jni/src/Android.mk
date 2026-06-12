@@ -16,7 +16,7 @@ LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/export.map
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/imGui \
                     $(LOCAL_PATH)/App/Touch \
                     $(LOCAL_PATH)/App/Utils \
-                    $(LOCAL_PATH)/App/Graphics \
+                    $(LOCAL_PATH)/Graphics \
                     $(LOCAL_PATH)/App \
                     $(LOCAL_PATH)/Dobby
 
