@@ -23,6 +23,9 @@ static EGLBoolean hooked_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     eglQuerySurface(dpy, surface, EGL_WIDTH,  &s_gl_w);
     eglQuerySurface(dpy, surface, EGL_HEIGHT, &s_gl_h);
 
+    int current_orientation = (s_gl_w > s_gl_h) ? 1 : 0; 
+    Touch::setOrientation(current_orientation);
+
     if (!s_imgui_init) {
         LOGI("ImGui init start, size %dx%d", s_gl_w, s_gl_h);
         ImGui::CreateContext();
@@ -41,14 +44,6 @@ static EGLBoolean hooked_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     ImGuiIO& io    = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)s_gl_w, (float)s_gl_h);
     io.DeltaTime   = 1.0f / 60.0f;
-
-    float tx = 0.0f, ty = 0.0f;
-    bool tdown = false;
-    Touch::GetImGuiState(&tx, &ty, &tdown);
-
-    io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
-    io.AddMousePosEvent(tx, ty);
-    io.AddMouseButtonEvent(0, tdown);
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
