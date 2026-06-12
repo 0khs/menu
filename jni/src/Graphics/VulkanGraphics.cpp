@@ -253,7 +253,10 @@ static VkResult hooked_vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCr
         initInfo.ImageCount = imageCount;
         initInfo.Allocator = nullptr;
 
-        ImGui_ImplVulkan_Init(&initInfo, s_renderPass);
+        initInfo.RenderPass = s_renderPass;
+        initInfo.UseDynamicRendering = false;
+
+        ImGui_ImplVulkan_Init(&initInfo);
 
         Touch::Init({(float)s_extent.width, (float)s_extent.height}, true);
         InitMenuStyle();
@@ -283,11 +286,19 @@ static VkResult hooked_vkCreateDevice(VkPhysicalDevice physicalDevice, const VkD
 
     vkGetDeviceQueue_ = (PFN_vkGetDeviceQueue)VkWrap::vkGetDeviceProcAddr_(s_device, "vkGetDeviceQueue");
 
-    for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
-        if (pCreateInfo->pQueueCreateInfos[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-            s_queueFamily = pCreateInfo->pQueueCreateInfos[i].queueFamilyIndex;
-            vkGetDeviceQueue_(s_device, s_queueFamily, 0, &s_queue);
-            break;
+    {
+        uint32_t familyCount = 0;
+        VkWrap::vkGetPhysicalDeviceQueueFamilyProperties_(physicalDevice, &familyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> familyProps(familyCount);
+        VkWrap::vkGetPhysicalDeviceQueueFamilyProperties_(physicalDevice, &familyCount, familyProps.data());
+
+        for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
+            uint32_t familyIndex = pCreateInfo->pQueueCreateInfos[i].queueFamilyIndex;
+            if (familyIndex < familyCount && (familyProps[familyIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+                s_queueFamily = familyIndex;
+                vkGetDeviceQueue_(s_device, s_queueFamily, 0, &s_queue);
+                break;
+            }
         }
     }
 
