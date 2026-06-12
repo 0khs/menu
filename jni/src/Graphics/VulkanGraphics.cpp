@@ -1,3 +1,4 @@
+#define VK_USE_PLATFORM_ANDROID_KHR   // <- TOP, before any include
 #include <cstdlib>
 #include <dlfcn.h>
 #include "VulkanGraphics.h"
@@ -5,7 +6,6 @@
 #include <vulkan/vulkan_android.h>
 #include <android/native_window.h>
 #include <unistd.h>
-
 #ifndef NDEBUG
 
 static void check_vk_result(VkResult err) {
@@ -242,10 +242,10 @@ void VulkanGraphics::Setup() {
     init_info.Queue = m_Queue;
     init_info.PipelineCache = m_PipelineCache;
     init_info.DescriptorPool = m_DescriptorPool;
-    init_info.RenderPass = wd->RenderPass;
+    init_info.PipelineInfoMain.RenderPass   = wd->RenderPass;
     init_info.MinImageCount = m_MinImageCount;
     init_info.ImageCount = wd->ImageCount;
-    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+    init_info.PipelineInfoMain.MSAASamples  = VK_SAMPLE_COUNT_1_BIT;
     init_info.Allocator = m_Allocator;
     init_info.CheckVkResultFn = check_vk_result;
     ImGui_ImplVulkan_Init(&init_info);
