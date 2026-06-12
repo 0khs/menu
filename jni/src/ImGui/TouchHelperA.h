@@ -7,7 +7,7 @@
 
 namespace Touch {
     struct touchObj {
-        My_Vector2 pos{};
+        Vector2 pos{};
         int id = 0;
         bool isDown = false;
     };
@@ -22,7 +22,7 @@ namespace Touch {
         Device() { memset((void *) this, 0, sizeof(*this)); }
     };
 
-    bool Init(const My_Vector2 &s, bool p_readOnly);
+    bool Init(const Vector2 &s, bool p_readOnly);
 
     void Close();
 
@@ -35,16 +35,12 @@ namespace Touch {
     void Move(touchObj *touch, float x, float y);
 
     void Upload();
-    
-    void SetMenuBounds(float x, float y, float w, float h);
 
     void SetCallBack(const std::function<void(std::vector<Device> *)> &cb);
 
-    void GetImGuiState(float* x, float* y, bool* down);
+    Vector2 Touch2Screen(const Vector2 &coord);
 
-    My_Vector2 Touch2Screen(const My_Vector2 &coord);
-
-    My_Vector2 GetScale();
+    Vector2 GetScale();
 
     void setOrientation(int orientation);
 

@@ -18,32 +18,35 @@
 #define UNGRAB 0
 #define GRAB 1
 
+//TODO 触摸穿透
+
 namespace Touch {
+
     static struct {
-        input_event downEvent[2]{{{}, EV_KEY, BTN_TOUCH,       1}, {{}, EV_KEY, BTN_TOOL_FINGER, 1}};
+        input_event downEvent[2]{{{}, EV_KEY, BTN_TOUCH,       1},
+                                 {{}, EV_KEY, BTN_TOOL_FINGER, 1}};
         input_event event[512]{0};
     } input;
 
-    static My_Vector2 touch_scale;
-    static My_Vector2 screenSize;
+    static Vector2 touch_scale;
+
+    static Vector2 screenSize;
+
     static std::vector<Device> devices;
+
     static int nowfd;
+
     static int orientation = 0;
+
     static bool initialized = false;
+
     static bool readOnly = false;
+
     static bool otherTouch = false;
+
     static std::function<void(std::vector<Device> *)> callback;
+
     static spinlock lock;
-
-    static struct {
-        float x = 0, y = 0, w = 0, h = 0;
-        bool enabled = false;
-    } menuBounds;
-
-    static int active_imgui_finger = -1;
-    static float g_imgui_x = 0.0f;
-    static float g_imgui_y = 0.0f;
-    static bool g_imgui_down = false;
 
     void Upload() {
         static bool isFirstDown = true;
@@ -120,106 +123,63 @@ namespace Touch {
         }
     }
 
-    static void ImGuiTouchRouter(std::vector<Device>* devices_arg) {
-        if (!menuBounds.enabled || !devices_arg) {
-            Upload();
-            return;
-        }
 
-        bool finger_still_down = false;
-        float current_screen_x = 0.0f;
-        float current_screen_y = 0.0f;
+    /*void *TypeB(void *arg) {
+        int i = (int) (long) arg;
+        Device &device = devices[i];
+        int latest = 0;
+        input_event inputEvent[64]{0};
 
-        if (active_imgui_finger != -1) {
-            for (auto& dev : *devices_arg) {
-                for (int i = 0; i < 10; ++i) {
-                    auto& f = dev.Finger[i];
-                    if (f.isDown && f.id == active_imgui_finger) {
-                        finger_still_down = true;
-                        auto screenPos = Touch2Screen(f.pos);
-                        current_screen_x = screenPos.x;
-                        current_screen_y = screenPos.y;
-                        break;
+        while (Touch_initialized) {
+            auto readSize = (int32_t) read(origfd[i], inputEvent, sizeof(inputEvent));
+            if (readSize <= 0 || (readSize % sizeof(input_event)) != 0) {
+                continue;
+            }
+            size_t count = size_t(readSize) / sizeof(input_event);
+            for (size_t j = 0; j < count; j++) {
+                input_event &ie = inputEvent[j];
+                if (latest < 0)
+                    latest = 0;
+                if (latest >= 10)
+                    continue;
+                if (ie.code == ABS_MT_TRACKING_ID) {
+                    if (ie.value < 0) {
+                        Finger[i][latest].isDown = false;
+                    } else {
+                        Finger[i][latest].isDown = true;
                     }
+                    Finger[i][latest].id = (i * 2 + 1) * maxF + ie.value;
+                    continue;
                 }
-                if (finger_still_down) break;
-            }
-        }
-
-        if (active_imgui_finger == -1) {
-            for (auto& dev : *devices_arg) {
-                for (int i = 0; i < 10; ++i) {
-                    auto& f = dev.Finger[i];
-                    if (f.isDown) {
-                        auto screenPos = Touch2Screen(f.pos);
-                        if (screenPos.x >= menuBounds.x && 
-                            screenPos.x <= menuBounds.x + menuBounds.w &&
-                            screenPos.y >= menuBounds.y && 
-                            screenPos.y <= menuBounds.y + menuBounds.h) {
-
-                            active_imgui_finger = f.id;
-                            finger_still_down = true;
-                            current_screen_x = screenPos.x;
-                            current_screen_y = screenPos.y;
-                            break;
-                        }
-                    }
+                if (ie.code == ABS_MT_POSITION_X) {
+                    Finger[i][latest].isDown = true;
+                    Finger[i][latest].x = (int) (ie.value * S2TX);
+                    continue;
                 }
-                if (active_imgui_finger != -1) break;
-            }
-        }
-
-        if (active_imgui_finger != -1) {
-            if (!finger_still_down) {
-                active_imgui_finger = -1;
-            }
-        }
-
-        g_imgui_x = current_screen_x;
-        g_imgui_y = current_screen_y;
-        g_imgui_down = finger_still_down;
-
-        bool suppressed = false;
-        if (active_imgui_finger != -1) {
-            for (auto& dev : *devices_arg) {
-                for (int i = 0; i < 10; ++i) {
-                    if (dev.Finger[i].isDown && dev.Finger[i].id == active_imgui_finger) {
-                        bool was_down = dev.Finger[i].isDown;
-                        dev.Finger[i].isDown = false;
-                        Upload();
-                        dev.Finger[i].isDown = was_down;
-                        suppressed = true;
-                        break;
-                    }
+                if (ie.code == ABS_MT_POSITION_Y) {
+                    Finger[i][latest].isDown = true;
+                    Finger[i][latest].y = (int) (ie.value * S2TY);
+                    continue;
                 }
-                if (suppressed) break;
+                if (ie.code == SYN_MT_REPORT) {
+                    latest += 1;
+                    continue;
+                }
+                if (ie.code == SYN_REPORT) {
+                    Upload();
+                    memset(&Finger[i][0], 0, sizeof(Finger) * 10);
+                    latest = -1;
+                    continue;
+                }
             }
         }
-        if (!suppressed) {
-            Upload();
-        }
-    }
-
-    void SetMenuBounds(float x, float y, float w, float h) {
-        menuBounds.x = x;
-        menuBounds.y = y;
-        menuBounds.w = w;
-        menuBounds.h = h;
-        menuBounds.enabled = true;
-        SetCallBack(ImGuiTouchRouter);
-    }
-
-    void GetImGuiState(float* x, float* y, bool* down) {
-        lock.lock();
-        *x = g_imgui_x;
-        *y = g_imgui_y;
-        *down = g_imgui_down;
-        lock.unlock();
-    }
+        return nullptr;
+    }*/
 
     static void *TypeA(void *arg) {
         int i = (int) (long) arg;
         Device &device = devices[i];
+
         int latest = 0;
         input_event inputEvent[64]{0};
 
@@ -259,6 +219,17 @@ namespace Touch {
                     }
                 }
                 if (ie.code == SYN_REPORT) {
+                    if (ImGui::GetCurrentContext() != nullptr) {
+                        ImGuiIO &io = ImGui::GetIO();
+                        if (device.Finger[latest].isDown) {
+                            auto pos = Touch2Screen(device.Finger[latest].pos);
+                            io.MousePos = ImVec2(pos.x, pos.y);
+                            io.MouseDown[0] = true;
+                        } else {
+                            io.MouseDown[0] = false;
+                        }
+                    }
+
                     if (!readOnly) {
                         if (callback) {
                             callback(&devices);
@@ -270,6 +241,7 @@ namespace Touch {
                 }
             }
             lock.unlock();
+
         }
         return nullptr;
     }
@@ -308,10 +280,10 @@ namespace Touch {
         return itmp && itmp2 && itmp3;
     }
 
-    bool Init(const My_Vector2 &s, bool p_readOnly) {
+    bool Init(const Vector2 &s, bool p_readOnly) {
         Close();
         devices.clear();
-        My_Vector2 size = s;
+        Vector2 size = s;
         readOnly = p_readOnly;
         if (size.x > size.y) {
             screenSize = size;
@@ -356,6 +328,7 @@ namespace Touch {
             puts("获取屏幕驱动失败");
             return false;
         }
+        LOGD("device count: %zu", devices.size());
 
         int screenX = devices[0].absX.maximum;
         int screenY = devices[0].absY.maximum;
@@ -457,6 +430,7 @@ namespace Touch {
         touch_scale.x = (float) screenX / size.x;
         touch_scale.y = (float) screenY / size.y;
 
+        //system("chmod 000 -R /proc/bus/input/*");
         return true;
     }
 
@@ -483,7 +457,7 @@ namespace Touch {
         lock.lock();
         touchObj &touch = devices[0].Finger[9];
         touch.id = 19;
-        touch.pos = My_Vector2(x, y) * touch_scale;
+        touch.pos = Vector2(x, y) * touch_scale;
         touch.isDown = true;
         Upload();
         lock.unlock();
@@ -491,7 +465,7 @@ namespace Touch {
 
     void Move(touchObj *touch, float x, float y) {
         lock.lock();
-        touch->pos = My_Vector2(x, y) * touch_scale;
+        touch->pos = Vector2(x, y) * touch_scale;
         Upload();
         lock.unlock();
     }
@@ -512,7 +486,7 @@ namespace Touch {
         callback = cb;
     }
 
-    My_Vector2 Touch2Screen(const My_Vector2 &coord) {
+    Vector2 Touch2Screen(const Vector2 &coord) {
         float x = coord.x, y = coord.y;
         float xt = x / touch_scale.x;
         float yt = y / touch_scale.y;
@@ -559,7 +533,7 @@ namespace Touch {
         return {x, y};
     }
 
-    My_Vector2 GetScale() {
+    Vector2 GetScale() {
         return touch_scale;
     }
 
