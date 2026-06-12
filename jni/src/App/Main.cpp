@@ -1,9 +1,8 @@
 #include <jni.h>
 #include <pthread.h>
-#include <dlfcn.h>
+#include <unistd.h>
 #include <atomic>
-#include "dobby.h"
-#include "Draw.h"
+#include "GraphicsManager.h"
 #include "Logger.h"
 
 static std::atomic<bool> g_started{false};
@@ -12,26 +11,7 @@ static void* hook_thread(void*) {
     LOGI("hook_thread started, sleeping 5s");
     sleep(5);
 
-    void* egl = dlopen("libEGL.so", RTLD_LAZY);
-    if (!egl) {
-        LOGE("dlopen libEGL.so failed");
-        return nullptr;
-    }
-    LOGI("libEGL.so loaded at %p", egl);
-
-    void* addr = dlsym(egl, "eglSwapBuffers");
-    if (!addr) {
-        LOGE("dlsym eglSwapBuffers failed");
-        return nullptr;
-    }
-    LOGI("eglSwapBuffers found at %p", addr);
-
-    int res = DobbyHook(addr, (void*)hooked_eglSwapBuffers, (void**)&orig_eglSwapBuffers);
-    if (res == 0) {
-        LOGI("DobbyHook success");
-    } else {
-        LOGE("DobbyHook failed, code %d", res);
-    }
+    GraphicsManager::Init();
 
     return nullptr;
 }
