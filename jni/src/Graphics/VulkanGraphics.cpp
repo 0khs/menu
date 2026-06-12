@@ -253,7 +253,8 @@ static VkResult hooked_vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCr
         initInfo.ImageCount = imageCount;
         initInfo.Allocator = nullptr;
 
-        initInfo.RenderPass = s_renderPass;
+        initInfo.ApiVersion = VK_API_VERSION_1_0;
+        initInfo.PipelineInfoMain.RenderPass = s_renderPass;
         initInfo.UseDynamicRendering = false;
 
         ImGui_ImplVulkan_Init(&initInfo);
