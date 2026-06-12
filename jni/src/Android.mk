@@ -20,6 +20,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/imGui \
 
 LOCAL_SRC_FILES := \
     App/Main.cpp \
+    App/Touch/TouchHelperA.cpp \
     imGui/imgui.cpp \
     imGui/imgui_draw.cpp \
     imGui/imgui_tables.cpp \
