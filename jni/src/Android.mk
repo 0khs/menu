@@ -30,4 +30,4 @@ LOCAL_STATIC_LIBRARIES := Dobby
 LOCAL_LDLIBS := -lm -ldl -lz -llog -landroid -lEGL -lGLESv1_CM -lGLESv2 -lGLESv3
 
 include $(BUILD_SHARED_LIBRARY)
-$(call import-module,android/native_app_glue
+$(call import-module,android/native_app_glue)
