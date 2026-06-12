@@ -33,6 +33,7 @@ static EGLBoolean hooked_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
         io.IniFilename = nullptr;
         io.DisplaySize = ImVec2((float)s_gl_w, (float)s_gl_h);
         ImGui_ImplOpenGL3_Init("#version 300 es");
+        
         Touch::Init({(float)s_gl_w, (float)s_gl_h}, false);
         InitMenuStyle();
         s_imgui_init = true;
@@ -44,6 +45,14 @@ static EGLBoolean hooked_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     ImGuiIO& io    = ImGui::GetIO();
     io.DisplaySize = ImVec2((float)s_gl_w, (float)s_gl_h);
     io.DeltaTime   = 1.0f / 60.0f;
+
+    float touch_x = 0.0f, touch_y = 0.0f;
+    bool touch_down = false;
+    
+    Touch::GetImGuiState(&touch_x, &touch_y, &touch_down);
+    
+    io.MousePos = ImVec2(touch_x, touch_y);
+    io.MouseDown[0] = touch_down;
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
