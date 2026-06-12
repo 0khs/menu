@@ -19,16 +19,15 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/imGui \
 
 LOCAL_SRC_FILES := \
     App/Main.cpp \
-    App/Touch/TouchHelperA.cpp \
-    ImGui/imgui.cpp \
-    ImGui/imgui_draw.cpp \
-    ImGui/imgui_tables.cpp \
-    ImGui/imgui_widgets.cpp \
-    ImGui/imgui_impl_android.cpp \
-    ImGui/imgui_impl_opengl3.cpp
+    imGui/imgui.cpp \
+    imGui/imgui_draw.cpp \
+    imGui/imgui_tables.cpp \
+    imGui/imgui_widgets.cpp \
+    imGui/imgui_impl_android.cpp \
+    imGui/imgui_impl_opengl3.cpp
 
 LOCAL_STATIC_LIBRARIES := Dobby
 LOCAL_LDLIBS := -lm -ldl -lz -llog -landroid -lEGL -lGLESv1_CM -lGLESv2 -lGLESv3
 
 include $(BUILD_SHARED_LIBRARY)
-$(call Import-module,android/native_app_glue)
+$(call import-module,android/native_app_glue
