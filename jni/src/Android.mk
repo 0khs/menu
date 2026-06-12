@@ -10,7 +10,8 @@ LOCAL_MODULE    := menu
 
 LOCAL_CFLAGS := -w -s -fvisibility=hidden -fpermissive -fexceptions -O3
 LOCAL_CPPFLAGS := -w -s -fvisibility=hidden -Werror -std=c++17 -Wno-error=c++11-narrowing -fpermissive -Wall -fexceptions -O3
-LOCAL_LDFLAGS += -Wl,--gc-sections,--strip-all
+LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/export.map
+
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/imGui \
                     $(LOCAL_PATH)/App/Touch \

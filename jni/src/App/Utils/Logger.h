@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <unistd.h>
 
-#define LOG_TAG "menu"
+#define LOG_TAG "zxMenu"
 #define ENABLE_LOGGING 1
 
 #if ENABLE_LOGGING

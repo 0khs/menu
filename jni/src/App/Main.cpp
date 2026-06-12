@@ -1,43 +1,55 @@
 #include <jni.h>
 #include <pthread.h>
-#include <unistd.h>
 #include <dlfcn.h>
-#include <android/log.h>
-
+#include <atomic>
 #include "dobby.h"
-
 #include "Draw.h"
 #include "Logger.h"
 
-#define LOG_TAG "Menu"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+static std::atomic<bool> g_started{false};
 
-void* Main_thread(void*) {
+static void* hook_thread(void*) {
+    LOGI("hook_thread started, sleeping 5s");
     sleep(5);
-    
-    void* egl_handle = dlopen("libEGL.so", RTLD_LAZY);
-    if (!egl_handle) {
-        LOGI("libEGL.so not found");
+
+    void* egl = dlopen("libEGL.so", RTLD_LAZY);
+    if (!egl) {
+        LOGE("dlopen libEGL.so failed");
         return nullptr;
     }
+    LOGI("libEGL.so loaded at %p", egl);
 
-    void* eglSwapBuffers_addr = dlsym(egl_handle, "eglSwapBuffers");
-    if (!eglSwapBuffers_addr) {
-        LOGI("eglSwapBuffers not found");
+    void* addr = dlsym(egl, "eglSwapBuffers");
+    if (!addr) {
+        LOGE("dlsym eglSwapBuffers failed");
         return nullptr;
     }
+    LOGI("eglSwapBuffers found at %p", addr);
 
-    if (DobbyHook(eglSwapBuffers_addr, (void*)hooked_eglSwapBuffers, (void**)&orig_eglSwapBuffers) == 0) {
+    int res = DobbyHook(addr, (void*)hooked_eglSwapBuffers, (void**)&orig_eglSwapBuffers);
+    if (res == 0) {
         LOGI("DobbyHook success");
     } else {
-        LOGI("DobbyHook failed");
+        LOGE("DobbyHook failed, code %d", res);
     }
 
     return nullptr;
 }
 
-__attribute__((constructor))
-void lib_main() {
-    pthread_t t;
-    pthread_create(&t, nullptr, Main_thread, nullptr);
+extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
+    LOGI("JNI_OnLoad called, key=%p", key);
+
+    if (key != reinterpret_cast<void*>(1337)) {
+        LOGI("key mismatch, bailing");
+        return JNI_VERSION_1_6;
+    }
+
+    if (!g_started.exchange(true)) {
+        LOGI("spawning hook thread");
+        pthread_t t;
+        pthread_create(&t, nullptr, hook_thread, nullptr);
+        pthread_detach(t);
+    }
+
+    return JNI_VERSION_1_6;
 }
