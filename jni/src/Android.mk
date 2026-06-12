@@ -13,7 +13,7 @@ LOCAL_CPPFLAGS := -w -s -fvisibility=hidden -Werror -std=c++17 -Wno-error=c++11-
 LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/export.map
 
 
-LOCAL_C_INCLUDES += $(LOCAL_PATH)/imGui \
+LOCAL_C_INCLUDES += $(LOCAL_PATH)/ImGui \
                     $(LOCAL_PATH)/App/Touch \
                     $(LOCAL_PATH)/App/Utils \
                     $(LOCAL_PATH)/Graphics \
@@ -27,16 +27,15 @@ LOCAL_SRC_FILES := \
     Graphics/OpenGLGraphics.cpp \
     Graphics/VulkanGraphics.cpp \
     Graphics/vulkan_wrapper.cpp \
-    imGui/imgui.cpp \
-    imGui/imgui_draw.cpp \
-    imGui/imgui_tables.cpp \
-    imGui/imgui_widgets.cpp \
-    imGui/imgui_impl_android.cpp \
-    imGui/imgui_impl_opengl3.cpp \
-    imGui/imgui_impl_vulkan.cpp
+    ImGui/imgui.cpp \
+    ImGui/imgui_draw.cpp \
+    ImGui/imgui_tables.cpp \
+    ImGui/imgui_widgets.cpp \
+    ImGui/imgui_impl_android.cpp \
+    ImGui/imgui_impl_opengl3.cpp \
+    ImGui/imgui_impl_vulkan.cpp
 
 LOCAL_STATIC_LIBRARIES := Dobby
 LOCAL_LDLIBS := -lm -ldl -lz -llog -landroid -lEGL -lGLESv1_CM -lGLESv2 -lGLESv3 -lvulkan
 
 include $(BUILD_SHARED_LIBRARY)
-$(call import-module,android/native_app_glue)

@@ -124,6 +124,7 @@ namespace Touch {
         }
 
         ImGuiIO& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
 
         bool finger_still_down = false;
         float current_screen_x = 0.0f;
@@ -161,8 +162,9 @@ namespace Touch {
                             current_screen_x = screenPos.x;
                             current_screen_y = screenPos.y;
 
-                            io.MousePos = ImVec2(current_screen_x, current_screen_y);
-                            io.MouseDown[0] = true;
+                            io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+                            io.AddMousePosEvent(current_screen_x, current_screen_y);
+                            io.AddMouseButtonEvent(0, true);
                             break;
                         }
                     }
@@ -173,9 +175,11 @@ namespace Touch {
 
         if (active_imgui_finger != -1) {
             if (finger_still_down) {
-                io.MousePos = ImVec2(current_screen_x, current_screen_y);
+                io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+                io.AddMousePosEvent(current_screen_x, current_screen_y);
             } else {
-                io.MouseDown[0] = false;
+                io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+                io.AddMouseButtonEvent(0, false);
                 active_imgui_finger = -1;
             }
         }

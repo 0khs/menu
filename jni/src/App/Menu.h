@@ -49,8 +49,6 @@ static void RainbowSeparator(float thickness, int alpha) {
     }
 }
 
-// ── bold + shadow text helper ──────────────────────────────────────────────
-
 static void BoldTextColored(const ImVec4& col, const char* fmt, ...) {
     char buf[256];
     va_list args;
@@ -63,8 +61,6 @@ static void BoldTextColored(const ImVec4& col, const char* fmt, ...) {
         {min.x + 1.f, min.y},
         ImGui::ColorConvertFloat4ToU32(col), buf);
 }
-
-// ── style init — call once after ImGui::CreateContext() ───────────────────
 
 inline void InitMenuStyle() {
     ImGuiIO& io = ImGui::GetIO();
@@ -105,26 +101,18 @@ inline void InitMenuStyle() {
     s.ScaleAllSizes(3.f);
 }
 
-// ── main draw entry — call every frame ────────────────────────────────────
-
 inline void DrawMenu() {
-    // When hidden: zero bounds immediately so the touch layer releases
-    // the region. No freeze, no lingering hit-test area.
     if (!g_menu_visible.load(std::memory_order_relaxed)) {
         LastCoordinate = {0.f, 0.f, 0.f, 0.f};
         return;
     }
 
-    // NoResize + NoCollapse matches the original overlay style.
-    // No close button (nullptr) — use g_menu_visible to toggle externally.
     ImGui::SetNextWindowSize(ImVec2(560.f, 0.f), ImGuiCond_Once);
     ImGui::Begin("OVERLAY", nullptr,
         ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 
     ImGuiWindow* win = ImGui::GetCurrentWindow();
     if (win) {
-        // Expand the touch-capture region by a drag padding so the window
-        // is draggable from its edges without accidentally missing.
         constexpr float PAD = 40.f;
         LastCoordinate = {
             win->Pos.x  - PAD,
@@ -133,7 +121,6 @@ inline void DrawMenu() {
             win->Size.y + PAD * 2.f
         };
 
-        // Version label drawn inside the title bar, right-aligned.
         const char* ver  = "v1.0.0@alpha";
         ImVec2      tsz  = ImGui::CalcTextSize(ver);
         ImGui::GetForegroundDrawList()->AddText(
@@ -142,29 +129,24 @@ inline void DrawMenu() {
             IM_COL32(220, 60, 60, 255), ver);
     }
 
-    // ── FPS / frame-time row ──────────────────────────────────────────────
     BoldTextColored({0.58f, 1.f,  0.58f, 1.f}, "%.0f FPS",       CPU::fps_ema);
     ImGui::SameLine(300.f);
     BoldTextColored({0.70f, 0.70f, 0.70f, 1.f}, "%.2f ms/frame", CPU::cur_ms);
     CPU::Graph();
     RainbowSeparator(3.f, 255);
 
-    // ── tabs ──────────────────────────────────────────────────────────────
     if (ImGui::BeginTabBar("##tabs")) {
-
         if (ImGui::BeginTabItem("Features")) {
             ImGui::Spacing();
-            // ── add your feature toggles / sliders here ───────────────────
             ImGui::EndTabItem();
         }
 
         if (ImGui::BeginTabItem("Info")) {
             ImGui::Spacing();
 
-            // date/time
             char     date_buf[64];
             std::time_t now = std::time(nullptr);
-            std::tm*    tm  = std::localtime(&now);
+            std::tm* tm  = std::localtime(&now);
             std::strftime(date_buf, sizeof(date_buf), "%Y-%m-%d  %H:%M:%S", tm);
             ImGui::TextColored({0.70f, 0.70f, 0.70f, 1.f}, "Date:");
             ImGui::SameLine();
