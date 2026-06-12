@@ -2,7 +2,7 @@
 #include <chrono>
 #include "imgui.h"
 
-namespace CPUTimer {
+namespace CPU {
     inline constexpr int HISTORY = 128;
     inline float samples[HISTORY] = {};
     inline int   head    = 0;

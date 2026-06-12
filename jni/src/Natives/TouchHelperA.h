@@ -41,6 +41,8 @@ namespace Touch {
     Vector2 Touch2Screen(const Vector2 &coord);
 
     Vector2 GetScale();
+    
+    void SetMenuBounds(float x, float y, float w, float h);
 
     void setOrientation(int orientation);
 

@@ -26,6 +26,12 @@ namespace Touch {
                                  {{}, EV_KEY, BTN_TOOL_FINGER, 1}};
         input_event event[512]{0};
     } input;
+    
+    static struct { float x, y, w, h; } menuBounds{};
+
+    void SetMenuBounds(float x, float y, float w, float h) {
+        menuBounds = {x, y, w, h};
+    }
 
     static Vector2 touch_scale;
 
@@ -177,10 +183,17 @@ namespace Touch {
                     }
 
                     if (!readOnly) {
-                        if (callback) {
-                            callback(&devices);
-                        } else {
-                            Upload();
+                        auto screenPos = Touch2Screen(device.Finger[latest].pos);
+                        bool inMenu = device.Finger[latest].isDown &&
+                            screenPos.x >= menuBounds.x && screenPos.x <= menuBounds.x + menuBounds.w &&
+                            screenPos.y >= menuBounds.y && screenPos.y <= menuBounds.y + menuBounds.h;
+
+                        if (!inMenu) {
+                            if (callback) {
+                                callback(&devices);
+                            } else {
+                                Upload();
+                            }
                         }
                     }
                     continue;
