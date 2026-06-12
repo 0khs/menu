@@ -23,10 +23,10 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/imGui \
 LOCAL_SRC_FILES := \
     App/Main.cpp \
     App/Touch/TouchHelperA.cpp \
-    App/Graphics/GraphicsManager.cpp \
-    App/Graphics/OpenGLGraphics.cpp \
-    App/Graphics/VulkanGraphics.cpp \
-    App/Graphics/vulkan_wrapper.cpp \
+    Graphics/GraphicsManager.cpp \
+    Graphics/OpenGLGraphics.cpp \
+    Graphics/VulkanGraphics.cpp \
+    Graphics/vulkan_wrapper.cpp \
     imGui/imgui.cpp \
     imGui/imgui_draw.cpp \
     imGui/imgui_tables.cpp \
