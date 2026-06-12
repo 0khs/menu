@@ -68,10 +68,12 @@ inline void InitMenuStyle() {
 
     ImGui::StyleColorsDark();
     ImGuiStyle& s = ImGui::GetStyle();
-    s.WindowRounding    = 6.f;
-    s.FrameRounding     = 4.f;
-    s.GrabRounding      = 4.f;
-    s.ScrollbarRounding = 4.f;
+    s.WindowRounding    = 3.f;
+    s.FrameRounding     = 2.f;
+    s.GrabRounding      = 2.f;
+    s.ScrollbarRounding = 2.f;
+    s.WindowBorderSize  = 0.f;
+    s.FrameBorderSize   = 0.f;
 
     s.Colors[ImGuiCol_TitleBg]            = ImColor(18,  18,  18,  255);
     s.Colors[ImGuiCol_TitleBgActive]      = ImColor(18,  18,  18,  255);
@@ -102,23 +104,26 @@ inline void InitMenuStyle() {
 }
 
 inline void DrawMenu() {
-    if (!g_menu_visible.load(std::memory_order_relaxed)) {
+    bool open = g_menu_visible.load(std::memory_order_relaxed);
+    if (!open) {
         LastCoordinate = {0.f, 0.f, 0.f, 0.f};
         return;
     }
 
     ImGui::SetNextWindowSize(ImVec2(560.f, 0.f), ImGuiCond_Once);
-    ImGui::Begin("OVERLAY", nullptr,
-        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+    ImGui::Begin("OVERLAY", &open, ImGuiWindowFlags_NoResize);
+
+    if (!open) {
+        g_menu_visible.store(false, std::memory_order_relaxed);
+    }
 
     ImGuiWindow* win = ImGui::GetCurrentWindow();
     if (win) {
-        constexpr float PAD = 40.f;
         LastCoordinate = {
-            win->Pos.x  - PAD,
-            win->Pos.y  - PAD,
-            win->Size.x + PAD * 2.f,
-            win->Size.y + PAD * 2.f
+            win->Pos.x,
+            win->Pos.y,
+            win->Size.x,
+            win->Size.y
         };
 
         const char* ver  = "v1.0.0@alpha";

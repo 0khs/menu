@@ -41,6 +41,9 @@ namespace Touch {
     } menuBounds;
 
     static int active_imgui_finger = -1;
+    static float g_imgui_x = 0.0f;
+    static float g_imgui_y = 0.0f;
+    static bool g_imgui_down = false;
 
     void Upload() {
         static bool isFirstDown = true;
@@ -123,9 +126,6 @@ namespace Touch {
             return;
         }
 
-        ImGuiIO& io = ImGui::GetIO();
-        io.ConfigFlags |= ImGuiConfigFlags_IsTouchScreen;
-
         bool finger_still_down = false;
         float current_screen_x = 0.0f;
         float current_screen_y = 0.0f;
@@ -161,10 +161,6 @@ namespace Touch {
                             finger_still_down = true;
                             current_screen_x = screenPos.x;
                             current_screen_y = screenPos.y;
-
-                            io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
-                            io.AddMousePosEvent(current_screen_x, current_screen_y);
-                            io.AddMouseButtonEvent(0, true);
                             break;
                         }
                     }
@@ -174,15 +170,14 @@ namespace Touch {
         }
 
         if (active_imgui_finger != -1) {
-            if (finger_still_down) {
-                io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
-                io.AddMousePosEvent(current_screen_x, current_screen_y);
-            } else {
-                io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
-                io.AddMouseButtonEvent(0, false);
+            if (!finger_still_down) {
                 active_imgui_finger = -1;
             }
         }
+
+        g_imgui_x = current_screen_x;
+        g_imgui_y = current_screen_y;
+        g_imgui_down = finger_still_down;
 
         bool suppressed = false;
         if (active_imgui_finger != -1) {
@@ -212,6 +207,14 @@ namespace Touch {
         menuBounds.h = h;
         menuBounds.enabled = true;
         SetCallBack(ImGuiTouchRouter);
+    }
+
+    void GetImGuiState(float* x, float* y, bool* down) {
+        lock.lock();
+        *x = g_imgui_x;
+        *y = g_imgui_y;
+        *down = g_imgui_down;
+        lock.unlock();
     }
 
     static void *TypeA(void *arg) {
@@ -256,17 +259,6 @@ namespace Touch {
                     }
                 }
                 if (ie.code == SYN_REPORT) {
-                    if (!callback && ImGui::GetCurrentContext() != nullptr) {
-                        ImGuiIO &io = ImGui::GetIO();
-                        if (device.Finger[latest].isDown) {
-                            auto pos = Touch2Screen(device.Finger[latest].pos);
-                            io.MousePos = ImVec2(pos.x, pos.y);
-                            io.MouseDown[0] = true;
-                        } else {
-                            io.MouseDown[0] = false;
-                        }
-                    }
-
                     if (!readOnly) {
                         if (callback) {
                             callback(&devices);

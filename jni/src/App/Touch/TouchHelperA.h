@@ -40,6 +40,8 @@ namespace Touch {
 
     void SetCallBack(const std::function<void(std::vector<Device> *)> &cb);
 
+    void GetImGuiState(float* x, float* y, bool* down);
+
     My_Vector2 Touch2Screen(const My_Vector2 &coord);
 
     My_Vector2 GetScale();

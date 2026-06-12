@@ -42,6 +42,14 @@ static EGLBoolean hooked_eglSwapBuffers(EGLDisplay dpy, EGLSurface surface) {
     io.DisplaySize = ImVec2((float)s_gl_w, (float)s_gl_h);
     io.DeltaTime   = 1.0f / 60.0f;
 
+    float tx = 0.0f, ty = 0.0f;
+    bool tdown = false;
+    Touch::GetImGuiState(&tx, &ty, &tdown);
+
+    io.AddMouseSourceEvent(ImGuiMouseSource_TouchScreen);
+    io.AddMousePosEvent(tx, ty);
+    io.AddMouseButtonEvent(0, tdown);
+
     ImGui_ImplOpenGL3_NewFrame();
     ImGui::NewFrame();
 
