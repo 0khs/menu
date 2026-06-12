@@ -9,11 +9,12 @@ include $(CLEAR_VARS)
 LOCAL_MODULE    := menu
 
 LOCAL_CFLAGS := -w -s -fvisibility=hidden -fpermissive -fexceptions -O3
-LOCAL_CPPFLAGS := -w -s -fvisibility=hidden -Werror -std=c++17 -Wno-error=c++11-narrowing -fpermissive -Wall -fexceptions -O3
+LOCAL_CPPFLAGS := -w -s -fvisibility=hidden -Werror -std=c++20 -Wno-error=c++11-narrowing -fpermissive -Wall -fexceptions -O3
 LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/export.map
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/ImGui \
                     $(LOCAL_PATH)/Natives \
+                    $(LOCAL_PATH)/Graphics
                     $(LOCAL_PATH)/Natives/ELF \
                     $(LOCAL_PATH)/App \
                     $(LOCAL_PATH)/App/Utils \
