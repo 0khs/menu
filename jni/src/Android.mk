@@ -13,6 +13,7 @@ LOCAL_CPPFLAGS := -w -s -fvisibility=hidden -Werror -std=c++20 -Wno-error=c++11-
 LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/export.map
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/ImGui \
+                    $(LOCAL_PATH)/Imgui/backends \
                     $(LOCAL_PATH)/Natives \
                     $(LOCAL_PATH)/Graphics \
                     $(LOCAL_PATH)/Natives/ELF \
