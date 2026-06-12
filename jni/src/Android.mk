@@ -14,6 +14,7 @@ LOCAL_LDFLAGS += -Wl,--gc-sections,--strip-all
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/imGui \
                     $(LOCAL_PATH)/App/Touch \
+                    $(LOCAL_PATH)/App/Utils \
                     $(LOCAL_PATH)/App \
                     $(LOCAL_PATH)/Dobby 
 
