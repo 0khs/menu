@@ -42,142 +42,204 @@ static decltype(&vkCreateDevice) orig_vkCreateDevice = nullptr;
 static decltype(&vkCreateSwapchainKHR) orig_vkCreateSwapchainKHR = nullptr;
 static decltype(&vkQueuePresentKHR) orig_vkQueuePresentKHR = nullptr;
 
-static void CheckVk(VkResult r) {
-    if (r != VK_SUCCESS) LOGE("VulkanGraphics: vk error %d", (int)r);
+static VkResult hooked_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* pPresentInfo) {
+    uint32_t index = pPresentInfo->pImageIndices[0];
+
+    VkWrap::vkWaitForFences_(s_device, 1, &s_fences[index], VK_TRUE, UINT64_MAX);
+    VkWrap::vkResetFences_(s_device, 1, &s_fences[index]);
+
+    VkCommandBuffer cmd = s_cmdBuffers[index];
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    VkWrap::vkBeginCommandBuffer_(cmd, &beginInfo);
+
+    VkRenderPassBeginInfo rpBeginInfo{};
+    rpBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    rpBeginInfo.renderPass = s_renderPass;
+    rpBeginInfo.framebuffer = s_framebuffers[index];
+    rpBeginInfo.renderArea.extent = s_extent;
+    rpBeginInfo.clearValueCount = 0;
+    rpBeginInfo.pClearValues = nullptr;
+
+    VkWrap::vkCmdBeginRenderPass_(cmd, &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    CPU::Tick();
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float)s_extent.width, (float)s_extent.height);
+    io.DeltaTime = 1.0f / 60.0f;
+
+    ImGui_ImplVulkan_NewFrame();
+    ImGui::NewFrame();
+
+    DrawMenu();
+
+    Touch::SetMenuBounds(LastCoordinate.Pos_x, LastCoordinate.Pos_y, LastCoordinate.Size_x, LastCoordinate.Size_y);
+
+    ImGui::EndFrame();
+    ImGui::Render();
+
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd);
+
+    VkWrap::vkCmdEndRenderPass_(cmd);
+    VkWrap::vkEndCommandBuffer_(cmd);
+
+    VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.waitSemaphoreCount = pPresentInfo->waitSemaphoreCount;
+    submitInfo.pWaitSemaphores = pPresentInfo->pWaitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmd;
+
+    VkWrap::vkQueueSubmit_(queue, 1, &submitInfo, s_fences[index]);
+
+    return orig_vkQueuePresentKHR(queue, pPresentInfo);
 }
 
-static void DestroySwapchainResources() {
-    if (s_device == VK_NULL_HANDLE) return;
+static VkResult hooked_vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkSwapchainKHR* pSwapchain) {
+    VkResult res = orig_vkCreateSwapchainKHR(device, pCreateInfo, pAllocator, pSwapchain);
+    if (res != VK_SUCCESS) return res;
 
-    if (!s_fences.empty()) VkWrap::vkWaitForFences_(s_device, (uint32_t)s_fences.size(), s_fences.data(), VK_TRUE, UINT64_MAX);
+    s_extent = pCreateInfo->imageExtent;
+    s_format = pCreateInfo->imageFormat;
 
-    for (auto fb : s_framebuffers) VkWrap::vkDestroyFramebuffer_(s_device, fb, nullptr);
-    for (auto iv : s_imageViews) VkWrap::vkDestroyImageView_(s_device, iv, nullptr);
-    for (auto f : s_fences) VkWrap::vkDestroyFence_(s_device, f, nullptr);
+    uint32_t imageCount = 0;
+    VkWrap::vkGetSwapchainImagesKHR_(device, *pSwapchain, &imageCount, nullptr);
+    s_images.resize(imageCount);
+    VkWrap::vkGetSwapchainImagesKHR_(device, *pSwapchain, &imageCount, s_images.data());
 
-    s_framebuffers.clear();
-    s_imageViews.clear();
-    s_fences.clear();
-    s_cmdBuffers.clear();
-    s_images.clear();
+    s_imageViews.resize(imageCount);
+    s_framebuffers.resize(imageCount);
 
-    if (s_renderPass) {
-        VkWrap::vkDestroyRenderPass_(s_device, s_renderPass, nullptr);
-        s_renderPass = VK_NULL_HANDLE;
+    for (uint32_t i = 0; i < imageCount; i++) {
+        VkImageViewCreateInfo viewInfo{};
+        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        viewInfo.image = s_images[i];
+        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        viewInfo.format = s_format;
+        viewInfo.components.r = VK_COMPONENT_SWIZZLE_R;
+        viewInfo.components.g = VK_COMPONENT_SWIZZLE_G;
+        viewInfo.components.b = VK_COMPONENT_SWIZZLE_B;
+        viewInfo.components.a = VK_COMPONENT_SWIZZLE_A;
+        viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        viewInfo.subresourceRange.baseMipLevel = 0;
+        viewInfo.subresourceRange.levelCount = 1;
+        viewInfo.subresourceRange.baseArrayLayer = 0;
+        viewInfo.subresourceRange.layerCount = 1;
+        VkWrap::vkCreateImageView_(device, &viewInfo, nullptr, &s_imageViews[i]);
     }
-}
 
-static void CreateSwapchainResources(VkSwapchainKHR swapchain, const VkSwapchainCreateInfoKHR* info) {
-    DestroySwapchainResources();
+    if (s_renderPass == VK_NULL_HANDLE) {
+        VkAttachmentDescription attachment{};
+        attachment.format = s_format;
+        attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+        attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        attachment.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-    s_format = info->imageFormat;
-    s_extent = info->imageExtent;
+        VkAttachmentReference color_attachment{};
+        color_attachment.attachment = 0;
+        color_attachment.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    uint32_t count = 0;
-    VkWrap::vkGetSwapchainImagesKHR_(s_device, swapchain, &count, nullptr);
-    s_images.resize(count);
-    VkWrap::vkGetSwapchainImagesKHR_(s_device, swapchain, &count, s_images.data());
+        VkSubpassDescription subpass{};
+        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        subpass.colorAttachmentCount = 1;
+        subpass.pColorAttachments = &color_attachment;
 
-    VkAttachmentDescription attachment{};
-    attachment.format = s_format;
-    attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
-    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment.initialLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        VkSubpassDependency dependency{};
+        dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+        dependency.dstSubpass = 0;
+        dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dependency.srcAccessMask = 0;
+        dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
-    VkAttachmentReference colorRef{};
-    colorRef.attachment = 0;
-    colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        VkRenderPassCreateInfo rpInfo{};
+        rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+        rpInfo.attachmentCount = 1;
+        rpInfo.pAttachments = &attachment;
+        rpInfo.subpassCount = 1;
+        rpInfo.pSubpasses = &subpass;
+        rpInfo.dependencyCount = 1;
+        rpInfo.pDependencies = &dependency;
+        VkWrap::vkCreateRenderPass_(device, &rpInfo, nullptr, &s_renderPass);
+    }
 
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorRef;
-
-    VkSubpassDependency dep{};
-    dep.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dep.dstSubpass = 0;
-    dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dep.srcAccessMask = 0;
-    dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    VkRenderPassCreateInfo rpInfo{};
-    rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    rpInfo.attachmentCount = 1;
-    rpInfo.pAttachments = &attachment;
-    rpInfo.subpassCount = 1;
-    rpInfo.pSubpasses = &subpass;
-    rpInfo.dependencyCount = 1;
-    rpInfo.pDependencies = &dep;
-    CheckVk(VkWrap::vkCreateRenderPass_(s_device, &rpInfo, nullptr, &s_renderPass));
-
-    s_imageViews.resize(count);
-    s_framebuffers.resize(count);
-    s_fences.resize(count);
-
-    for (uint32_t i = 0; i < count; ++i) {
-        VkImageViewCreateInfo ivInfo{};
-        ivInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        ivInfo.image = s_images[i];
-        ivInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        ivInfo.format = s_format;
-        ivInfo.components = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
-        ivInfo.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 };
-        CheckVk(VkWrap::vkCreateImageView_(s_device, &ivInfo, nullptr, &s_imageViews[i]));
-
+    for (uint32_t i = 0; i < imageCount; i++) {
+        VkImageView attachments[] = { s_imageViews[i] };
         VkFramebufferCreateInfo fbInfo{};
         fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
         fbInfo.renderPass = s_renderPass;
         fbInfo.attachmentCount = 1;
-        fbInfo.pAttachments = &s_imageViews[i];
+        fbInfo.pAttachments = attachments;
         fbInfo.width = s_extent.width;
         fbInfo.height = s_extent.height;
         fbInfo.layers = 1;
-        CheckVk(VkWrap::vkCreateFramebuffer_(s_device, &fbInfo, nullptr, &s_framebuffers[i]));
+        VkWrap::vkCreateFramebuffer_(device, &fbInfo, nullptr, &s_framebuffers[i]);
+    }
 
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        CheckVk(VkWrap::vkCreateFence_(s_device, &fenceInfo, nullptr, &s_fences[i]));
+    if (s_descriptorPool == VK_NULL_HANDLE) {
+        VkDescriptorPoolSize poolSizes[] = {
+            { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+            { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+            { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+            { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+        };
+        VkDescriptorPoolCreateInfo poolInfo{};
+        poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        poolInfo.maxSets = 1000 * (uint32_t)(sizeof(poolSizes) / sizeof(poolSizes[0]));
+        poolInfo.poolSizeCount = (uint32_t)(sizeof(poolSizes) / sizeof(poolSizes[0]));
+        poolInfo.pPoolSizes = poolSizes;
+        VkWrap::vkCreateDescriptorPool_(device, &poolInfo, nullptr, &s_descriptorPool);
     }
 
     if (s_cmdPool == VK_NULL_HANDLE) {
         VkCommandPoolCreateInfo poolInfo{};
         poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         poolInfo.queueFamilyIndex = s_queueFamily;
-        CheckVk(VkWrap::vkCreateCommandPool_(s_device, &poolInfo, nullptr, &s_cmdPool));
+        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+        VkWrap::vkCreateCommandPool_(device, &poolInfo, nullptr, &s_cmdPool);
     }
 
-    s_cmdBuffers.resize(count);
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = s_cmdPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = count;
-    CheckVk(VkWrap::vkAllocateCommandBuffers_(s_device, &allocInfo, s_cmdBuffers.data()));
+    if (s_cmdBuffers.empty()) {
+        s_cmdBuffers.resize(imageCount);
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = s_cmdPool;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        allocInfo.commandBufferCount = imageCount;
+        VkWrap::vkAllocateCommandBuffers_(device, &allocInfo, s_cmdBuffers.data());
+    }
+
+    if (s_fences.empty()) {
+        s_fences.resize(imageCount);
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+        for (uint32_t i = 0; i < imageCount; i++) {
+            VkWrap::vkCreateFence_(device, &fenceInfo, nullptr, &s_fences[i]);
+        }
+    }
 
     if (!s_imguiInit) {
-        VkDescriptorPoolSize poolSizes[] = {
-            { VK_DESCRIPTOR_TYPE_SAMPLER, 64 },
-            { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64 },
-        };
-        VkDescriptorPoolCreateInfo dpInfo{};
-        dpInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        dpInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        dpInfo.maxSets = 64;
-        dpInfo.poolSizeCount = 2;
-        dpInfo.pPoolSizes = poolSizes;
-        CheckVk(VkWrap::vkCreateDescriptorPool_(s_device, &dpInfo, nullptr, &s_descriptorPool));
-
         ImGui::CreateContext();
         ImGuiIO& io = ImGui::GetIO();
         io.IniFilename = nullptr;
-        io.DisplaySize = ImVec2((float)s_extent.width, (float)s_extent.height);
 
         ImGui_ImplVulkan_InitInfo initInfo{};
         initInfo.Instance = s_instance;
@@ -185,119 +247,49 @@ static void CreateSwapchainResources(VkSwapchainKHR swapchain, const VkSwapchain
         initInfo.Device = s_device;
         initInfo.QueueFamily = s_queueFamily;
         initInfo.Queue = s_queue;
+        initInfo.PipelineCache = VK_NULL_HANDLE;
         initInfo.DescriptorPool = s_descriptorPool;
-        initInfo.RenderPass = s_renderPass;
-        initInfo.Subpass = 0;
-        initInfo.MinImageCount = count;
-        initInfo.ImageCount = count;
-        initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
-        initInfo.CheckVkResultFn = CheckVk;
-        ImGui_ImplVulkan_Init(&initInfo);
+        initInfo.MinImageCount = imageCount;
+        initInfo.ImageCount = imageCount;
+        initInfo.Allocator = nullptr;
 
-        VkWrap::vkResetCommandPool_(s_device, s_cmdPool, 0);
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        VkWrap::vkBeginCommandBuffer_(s_cmdBuffers[0], &beginInfo);
-        ImGui_ImplVulkan_CreateFontsTexture();
-        VkWrap::vkEndCommandBuffer_(s_cmdBuffers[0]);
+        ImGui_ImplVulkan_Init(&initInfo, s_renderPass);
 
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &s_cmdBuffers[0];
-        VkWrap::vkQueueSubmit_(s_queue, 1, &submit, VK_NULL_HANDLE);
-        VkWrap::vkDeviceWaitIdle_(s_device);
-
+        Touch::Init({(float)s_extent.width, (float)s_extent.height}, true);
         InitMenuStyle();
-        Touch::Init({(float)s_extent.width, (float)s_extent.height}, false);
 
         s_imguiInit = true;
-        LOGI("VulkanGraphics: ImGui init done %ux%u", s_extent.width, s_extent.height);
-    } else {
-        ImGui_ImplVulkan_SetMinImageCount(count);
+        LOGI("VulkanGraphics: ImGui initialized successfully");
     }
-}
 
-static VkResult hooked_vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR* info, const VkAllocationCallbacks* alloc, VkSwapchainKHR* swapchain) {
-    VkResult res = orig_vkCreateSwapchainKHR(device, info, alloc, swapchain);
-    if (res == VK_SUCCESS) {
-        LOGI("VulkanGraphics: swapchain created %ux%u fmt=%d", info->imageExtent.width, info->imageExtent.height, (int)info->imageFormat);
-        CreateSwapchainResources(*swapchain, info);
+    if (VkWrap::vkCreateSwapchainKHR_ && !orig_vkCreateSwapchainKHR) {
+        DobbyHook((void*)VkWrap::vkCreateSwapchainKHR_, (void*)hooked_vkCreateSwapchainKHR, (void**)&orig_vkCreateSwapchainKHR);
     }
+    if (VkWrap::vkQueuePresentKHR_ && !orig_vkQueuePresentKHR) {
+        DobbyHook((void*)VkWrap::vkQueuePresentKHR_, (void*)hooked_vkQueuePresentKHR, (void**)&orig_vkQueuePresentKHR);
+    }
+
     return res;
 }
 
-static VkResult hooked_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* presentInfo) {
-    if (s_imguiInit && presentInfo->swapchainCount > 0 && !s_framebuffers.empty()) {
-        uint32_t imageIndex = presentInfo->pImageIndices[0];
-
-        ImGuiIO& io = ImGui::GetIO();
-        io.DisplaySize = ImVec2((float)s_extent.width, (float)s_extent.height);
-        io.DeltaTime = 1.0f / 60.0f;
-
-        CPU::Tick();
-
-        ImGui_ImplVulkan_NewFrame();
-        ImGui::NewFrame();
-
-        DrawMenu();
-
-        Touch::SetMenuBounds(LastCoordinate.Pos_x, LastCoordinate.Pos_y, LastCoordinate.Size_x, LastCoordinate.Size_y);
-
-        ImGui::EndFrame();
-        ImGui::Render();
-        ImDrawData* drawData = ImGui::GetDrawData();
-
-        VkWrap::vkWaitForFences_(s_device, 1, &s_fences[imageIndex], VK_TRUE, UINT64_MAX);
-        VkWrap::vkResetFences_(s_device, 1, &s_fences[imageIndex]);
-
-        VkCommandBuffer cmd = s_cmdBuffers[imageIndex];
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        VkWrap::vkBeginCommandBuffer_(cmd, &beginInfo);
-
-        VkRenderPassBeginInfo rpBegin{};
-        rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-        rpBegin.renderPass = s_renderPass;
-        rpBegin.framebuffer = s_framebuffers[imageIndex];
-        rpBegin.renderArea.extent = s_extent;
-        VkWrap::vkCmdBeginRenderPass_(cmd, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
-
-        ImGui_ImplVulkan_RenderDrawData(drawData, cmd);
-
-        VkWrap::vkCmdEndRenderPass_(cmd);
-        VkWrap::vkEndCommandBuffer_(cmd);
-
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &cmd;
-        VkWrap::vkQueueSubmit_(s_queue, 1, &submit, s_fences[imageIndex]);
-        VkWrap::vkWaitForFences_(s_device, 1, &s_fences[imageIndex], VK_TRUE, UINT64_MAX);
-    }
-
-    return orig_vkQueuePresentKHR(queue, presentInfo);
-}
-
-static VkResult hooked_vkCreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* info, const VkAllocationCallbacks* alloc, VkDevice* device) {
-    VkResult res = orig_vkCreateDevice(physicalDevice, info, alloc, device);
+static VkResult hooked_vkCreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDevice* pDevice) {
+    VkResult res = orig_vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
     if (res != VK_SUCCESS) return res;
 
     s_physicalDevice = physicalDevice;
-    s_device = *device;
-
-    if (info->queueCreateInfoCount > 0) {
-        s_queueFamily = info->pQueueCreateInfos[0].queueFamilyIndex;
-    }
+    s_device = *pDevice;
 
     VkWrap::ResolveDeviceFunctions(s_device);
 
     vkGetDeviceQueue_ = (PFN_vkGetDeviceQueue)VkWrap::vkGetDeviceProcAddr_(s_device, "vkGetDeviceQueue");
-    vkGetDeviceQueue_(s_device, s_queueFamily, 0, &s_queue);
 
-    LOGI("VulkanGraphics: device created, queueFamily=%u", s_queueFamily);
+    for (uint32_t i = 0; i < pCreateInfo->queueCreateInfoCount; i++) {
+        if (pCreateInfo->pQueueCreateInfos[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            s_queueFamily = pCreateInfo->pQueueCreateInfos[i].queueFamilyIndex;
+            vkGetDeviceQueue_(s_device, s_queueFamily, 0, &s_queue);
+            break;
+        }
+    }
 
     if (VkWrap::vkCreateSwapchainKHR_ && !orig_vkCreateSwapchainKHR) {
         DobbyHook((void*)VkWrap::vkCreateSwapchainKHR_, (void*)hooked_vkCreateSwapchainKHR, (void**)&orig_vkCreateSwapchainKHR);
@@ -331,13 +323,7 @@ bool TryHook() {
 
     orig_vkCreateInstance = VkWrap::vkCreateInstance_;
     int res = DobbyHook((void*)VkWrap::vkCreateInstance_, (void*)hooked_vkCreateInstance, (void**)&orig_vkCreateInstance);
-    if (res != 0) {
-        LOGE("VulkanGraphics: failed to hook vkCreateInstance, code %d", res);
-        return false;
-    }
-
-    LOGI("VulkanGraphics: vkCreateInstance hooked");
-    return true;
+    return res == 0;
 }
 
 bool IsActive() {
