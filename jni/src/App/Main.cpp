@@ -35,7 +35,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
         LOGI("==============================================================");
         LOGI("                zxMenu Initialized Successfully");
         LOGI("--------------------------------------------------------------");
-        LOGI("Developed by @0khs")
+        LOGI("Developed by @O0khs");
         LOGI("==============================================================");
         pthread_t t;
         pthread_create(&t, nullptr, hook_thread, nullptr);
