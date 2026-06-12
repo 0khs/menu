@@ -5,9 +5,9 @@
 #include <android/native_window.h>
 #include <android_native_app_glue.h>
 
-#include "ImGui/imgui.h"
-#include "ImGui/backends/imgui_impl_android.h"
-#include "ImGui/backends/imgui_impl_opengl3.h"
+#include "imgui.h"
+#include "imgui_impl_android.h"
+#include "imgui_impl_opengl3.h"
 
 #include "TouchHelperA.h"
 #include "CPU.h"
