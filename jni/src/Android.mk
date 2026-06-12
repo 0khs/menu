@@ -31,9 +31,11 @@ LOCAL_SRC_FILES := \
     Natives/AndroidImgui.cpp \
     Natives/my_imgui.cpp \
     Natives/my_imgui_impl_android.cpp \
-    Natives/ELF/elf_util.cpp
+    Natives/ELF/elf_util.cpp \
+    imgui_impl_opengl3.cpp \
+    imgui_impl_vulkan.cpp   
 
 LOCAL_STATIC_LIBRARIES := Dobby
-LOCAL_LDLIBS := -lm -ldl -lz -llog -landroid -lEGL -lGLESv1_CM -lGLESv2
+LOCAL_LDLIBS := -lm -ldl -lz -llog -landroid -lEGL -lGLESv3
 
 include $(BUILD_SHARED_LIBRARY)
