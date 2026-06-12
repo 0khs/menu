@@ -12,13 +12,12 @@
 #include "imgui.h"
 #include "TouchHelperA.h"
 #include "Utils.h"
+#include "Logger.h"
 
 #define maxE 5
 #define maxF 10
 #define UNGRAB 0
 #define GRAB 1
-
-//TODO 触摸穿透
 
 namespace Touch {
 
@@ -122,59 +121,6 @@ namespace Touch {
             write(nowfd, input.event, sizeof(struct input_event) * tmpCnt);
         }
     }
-
-
-    /*void *TypeB(void *arg) {
-        int i = (int) (long) arg;
-        Device &device = devices[i];
-        int latest = 0;
-        input_event inputEvent[64]{0};
-
-        while (Touch_initialized) {
-            auto readSize = (int32_t) read(origfd[i], inputEvent, sizeof(inputEvent));
-            if (readSize <= 0 || (readSize % sizeof(input_event)) != 0) {
-                continue;
-            }
-            size_t count = size_t(readSize) / sizeof(input_event);
-            for (size_t j = 0; j < count; j++) {
-                input_event &ie = inputEvent[j];
-                if (latest < 0)
-                    latest = 0;
-                if (latest >= 10)
-                    continue;
-                if (ie.code == ABS_MT_TRACKING_ID) {
-                    if (ie.value < 0) {
-                        Finger[i][latest].isDown = false;
-                    } else {
-                        Finger[i][latest].isDown = true;
-                    }
-                    Finger[i][latest].id = (i * 2 + 1) * maxF + ie.value;
-                    continue;
-                }
-                if (ie.code == ABS_MT_POSITION_X) {
-                    Finger[i][latest].isDown = true;
-                    Finger[i][latest].x = (int) (ie.value * S2TX);
-                    continue;
-                }
-                if (ie.code == ABS_MT_POSITION_Y) {
-                    Finger[i][latest].isDown = true;
-                    Finger[i][latest].y = (int) (ie.value * S2TY);
-                    continue;
-                }
-                if (ie.code == SYN_MT_REPORT) {
-                    latest += 1;
-                    continue;
-                }
-                if (ie.code == SYN_REPORT) {
-                    Upload();
-                    memset(&Finger[i][0], 0, sizeof(Finger) * 10);
-                    latest = -1;
-                    continue;
-                }
-            }
-        }
-        return nullptr;
-    }*/
 
     static void *TypeA(void *arg) {
         int i = (int) (long) arg;
@@ -325,7 +271,7 @@ namespace Touch {
         }
 
         if (devices.empty()) {
-            puts("获取屏幕驱动失败");
+            puts("Failed to get screen driver");
             return false;
         }
         LOGD("device count: %zu", devices.size());
@@ -430,7 +376,6 @@ namespace Touch {
         touch_scale.x = (float) screenX / size.x;
         touch_scale.y = (float) screenY / size.y;
 
-        //system("chmod 000 -R /proc/bus/input/*");
         return true;
     }
 
