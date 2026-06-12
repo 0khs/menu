@@ -11,7 +11,7 @@
 #include <jni.h>
 #include <random>
 #include <algorithm>
-#include "Log.h"
+#include "Logger.h"
 
 inline bool isStartWith(const std::string &str, const char *check) {
     return (str.rfind(check, 0) == 0);
