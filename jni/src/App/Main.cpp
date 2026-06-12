@@ -7,7 +7,7 @@
 #include "my_imgui.h"
 #include "TouchHelperA.h"
 #include "Logger.h"
-#includd "Draw.h"
+#include "Draw.h"
 
 static std::atomic<bool> g_started{false};
 static std::atomic<bool> g_running{false};
