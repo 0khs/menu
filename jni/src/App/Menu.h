@@ -138,7 +138,7 @@ inline void DrawMenu() {
         ImVec2      tsz  = ImGui::CalcTextSize(ver);
         ImGui::GetForegroundDrawList()->AddText(
             {win->Pos.x + win->Size.x - tsz.x - 50.f,
-             win->Pos.y + (win->TitleBarHeight - tsz.y) * 0.5f},
+             win->Pos.y + (win->TitleBarHeight() - tsz.y) * 0.5f},
             IM_COL32(220, 60, 60, 255), ver);
     }
 
