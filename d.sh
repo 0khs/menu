@@ -8,8 +8,7 @@ if [ -z "$REPO" ]; then
 fi
 
 echo "[+] Purging old libs..."
-rm -rf "libs/arm64-v8a"
-mkdir -p "libs/arm64-v8a"
+rm -f "libs/arm64-v8a/libmenu.so"
 
 echo "[+] Downloading menu binary from $REPO..."
 gh run download \
