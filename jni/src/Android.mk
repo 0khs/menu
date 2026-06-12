@@ -14,7 +14,7 @@ LOCAL_LDFLAGS += -Wl,--version-script=$(LOCAL_PATH)/export.map
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/ImGui \
                     $(LOCAL_PATH)/Natives \
-                    $(LOCAL_PATH)/Graphics
+                    $(LOCAL_PATH)/Graphics \
                     $(LOCAL_PATH)/Natives/ELF \
                     $(LOCAL_PATH)/App \
                     $(LOCAL_PATH)/App/Utils \
