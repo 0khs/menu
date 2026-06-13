@@ -16,20 +16,14 @@ static void* hook_thread(void*) {
     LOGI("hook_thread started, sleeping 5s");
     sleep(5);
 
-    android::DisplayInfo display;
-    for (int i = 0; i < 10; i++) {
+    android::ANativeWindowCreator::DisplayInfo display{};
+    for (int i = 0; i < 20; i++) {
         display = android::ANativeWindowCreator::GetDisplayInfo();
         LOGI("Display attempt %d: %dx%d", i, display.width, display.height);
         if (display.width > 0 && display.height > 0) break;
         sleep(1);
     }
 
-    if (display.width == 0 || display.height == 0) {
-        LOGE("Failed to get display info");
-        g_started.store(false);
-        return nullptr;
-    }
-    
     auto window = android::ANativeWindowCreator::Create("zxMenu", display.width, display.height);
     LOGI("Window: %p", window);
     if (!window) {
@@ -37,6 +31,22 @@ static void* hook_thread(void*) {
         g_started.store(false);
         return nullptr;
     }
+
+    if (display.width <= 0 || display.height <= 0) {
+        display.width  = ANativeWindow_getWidth(window);
+        display.height = ANativeWindow_getHeight(window);
+        LOGI("Display from window: %dx%d", display.width, display.height);
+    }
+
+    if (display.width <= 0 || display.height <= 0) {
+        LOGE("Failed to get display dimensions");
+        android::ANativeWindowCreator::Destroy(window);
+        g_started.store(false);
+        return nullptr;
+    }
+
+    if (display.height > display.width)
+        std::swap(display.height, display.width);
 
     auto graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::VULKAN);
     LOGI("Graphics ptr: %p", graphics.get());
@@ -71,10 +81,7 @@ static void* hook_thread(void*) {
     while (g_running.load()) {
         graphics->NewFrame();
         Touch::setOrientation(android::ANativeWindowCreator::GetDisplayInfo().orientation);
-        
         DrawFrame();
-       
-
         graphics->EndFrame();
     }
 
