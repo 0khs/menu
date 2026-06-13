@@ -1,6 +1,3 @@
-//
-// Created by ITEK on 2024/2/3.
-//
 
 #ifndef ANDROIDIMGUI_VULKANGRAPHICS_H
 #define ANDROIDIMGUI_VULKANGRAPHICS_H
@@ -22,6 +19,14 @@ private:
         VkDeviceMemory UploadBufferMemory = VK_NULL_HANDLE;
     };
 
+    struct FontResources {
+        VkImage image = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkImageView view = VK_NULL_HANDLE;
+        VkSampler sampler = VK_NULL_HANDLE;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+    };
+
     VkAllocationCallbacks *m_Allocator = nullptr;
     VkInstance m_Instance = VK_NULL_HANDLE;
     VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
@@ -38,6 +43,8 @@ private:
 
     int m_LastWidth = 0;
     int m_LastHeight = 0;
+
+    FontResources m_FontResources{};
 public:
     bool Create() override;
 

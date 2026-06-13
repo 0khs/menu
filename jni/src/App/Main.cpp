@@ -59,7 +59,6 @@ static void* hook_thread(void*) {
             std::swap(display.height, display.width);
 
         std::unique_ptr<AndroidImgui> graphics = nullptr;
-        GraphicsManager::GraphicsAPI selectedApi = GraphicsManager::VULKAN;
         bool ok = false;
 
         graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::VULKAN);
@@ -71,6 +70,9 @@ static void* hook_thread(void*) {
 
         if (!ok) {
             LOGE("Vulkan failed, trying OpenGL");
+            if (graphics) {
+                graphics->Shutdown();
+            }
             graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::OPENGL);
             LOGI("OpenGL graphics ptr: %p", graphics.get());
             if (graphics) {
@@ -81,6 +83,9 @@ static void* hook_thread(void*) {
 
         if (!ok) {
             LOGE("OpenGL failed, trying Software");
+            if (graphics) {
+                graphics->Shutdown();
+            }
             graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::SOFTWARE);
             LOGI("Software graphics ptr: %p", graphics.get());
             if (graphics) {
@@ -91,6 +96,9 @@ static void* hook_thread(void*) {
 
         if (!ok || !graphics) {
             LOGE("All graphics backends failed");
+            if (graphics) {
+                graphics->Shutdown();
+            }
             android::ANativeWindowCreator::Destroy(window);
             sleep(2);
             continue;
@@ -98,13 +106,27 @@ static void* hook_thread(void*) {
 
         LOGI("Graphics backend initialized successfully");
 
-        ImGui::Android_LoadSystemFont(26);
         InitMenuStyle();
         Touch::Init({(float)display.width, (float)display.height}, true);
 
+        int frame_count = 0;
         while (g_running.load()) {
-            graphics->NewFrame();
-            Touch::setOrientation(android::ANativeWindowCreator::GetDisplayInfo().orientation);
+            android::ANativeWindowCreator::DisplayInfo current_display = android::ANativeWindowCreator::GetDisplayInfo();
+            if (current_display.height > current_display.width)
+                std::swap(current_display.height, current_display.width);
+
+            ImGuiIO& io = ImGui::GetIO();
+            io.DisplaySize = ImVec2((float)current_display.width, (float)current_display.height);
+
+            bool resize = (current_display.width != (uint32_t)display.width ||
+                          current_display.height != (uint32_t)display.height);
+            if (resize) {
+                display.width = current_display.width;
+                display.height = current_display.height;
+            }
+
+            graphics->NewFrame(resize);
+            Touch::setOrientation(current_display.orientation);
             DrawFrame();
             graphics->EndFrame();
 
@@ -113,6 +135,7 @@ static void* hook_thread(void*) {
                 break;
             }
 
+            frame_count++;
             usleep(16000);
         }
 
@@ -146,15 +169,8 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
         return JNI_VERSION_1_6;
     }
 
-
     if (!g_started.exchange(true)) {
-        LOGI("==============================================================");
-        LOGI("    ███████╗██╗  ██╗███╗   ███╗███████╗███╗   ██╗██╗   ██╗");
-        LOGI("    ╚══███╔╝╚██╗██╔╝████╗ ████║██╔════╝████╗  ██║██║   ██║");
-        LOGI("      ███╔╝  ╚███╔╝ ██╔████╔██║█████╗  ██╔██╗ ██║██║   ██║");
-        LOGI("     ███╔╝   ██╔██╗ ██║╚██╔╝██║██╔══╝  ██║╚██╗██║██║   ██║");
-        LOGI("    ███████╗██╔╝ ██╗██║ ╚═╝ ██║███████╗██║ ╚████║╚██████╔╝");
-        LOGI("    ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚═╝  ╚═══╝ ╚═════╝ ");
+        
         LOGI("==============================================================");
         LOGI("                zxMenu Initialized Successfully");
         LOGI("--------------------------------------------------------------");

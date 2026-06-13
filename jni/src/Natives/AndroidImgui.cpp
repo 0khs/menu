@@ -12,9 +12,13 @@ bool AndroidImgui::Init(ANativeWindow *window, float width, float height) {
     m_Height = height;
 
     ANativeWindow_acquire(window);
-    Create();
 
-    // Setup Dear ImGui context
+    if (!Create()) {
+        ANativeWindow_release(window);
+        m_Window = nullptr;
+        return false;
+    }
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO();
@@ -23,11 +27,8 @@ bool AndroidImgui::Init(ANativeWindow *window, float width, float height) {
     io.LogFilename = nullptr;
     io.DisplaySize = {width, height};
     io.FontGlobalScale = 1.3f;
-    // Setup Dear ImGui style
-    //ImGui::StyleColorsDark();
-    ImGui::StyleColorsLight();
     ImGuiStyle &style = ImGui::GetStyle();
-    style.ScaleAllSizes(3);
+
     style.WindowRounding = 3.f;
     My_ImGui_ImplAndroid_Init(window);
 

@@ -62,11 +62,9 @@ static void BoldTextColored(const ImVec4& col, const char* fmt, ...) {
 }
 
 inline void InitMenuStyle() {
-    ImGuiIO& io = ImGui::GetIO();
-    io.Fonts->AddFontDefault();
-
-    ImGui::StyleColorsDark();
     ImGuiStyle& s = ImGui::GetStyle();
+    ImGui::StyleColorsDark();
+
     s.WindowRounding    = 3.f;
     s.FrameRounding     = 2.f;
     s.GrabRounding      = 2.f;
@@ -100,6 +98,9 @@ inline void InitMenuStyle() {
     s.Colors[ImGuiCol_SeparatorActive]    = ImColor(55,  55,  55,  255);
 
     s.ScaleAllSizes(3.f);
+
+    ImGuiIO& io = ImGui::GetIO();
+    io.Fonts->Build();
 }
 
 inline void DrawMenu() {
@@ -109,7 +110,11 @@ inline void DrawMenu() {
         return;
     }
 
-    ImGui::SetNextWindowSize(ImVec2(560.f, 0.f), ImGuiCond_Once);
+    ImGuiIO& io = ImGui::GetIO();
+    float maxWindowWidth = io.DisplaySize.x * 0.85f;
+    float windowWidth = maxWindowWidth < 560.f ? maxWindowWidth : 560.f;
+
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, 0.f), ImGuiCond_Once);
     ImGui::Begin("OVERLAY", &open, ImGuiWindowFlags_NoResize);
 
     if (!open) {
