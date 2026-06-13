@@ -15,6 +15,12 @@ static std::atomic<bool> g_running{false};
 static void* hook_thread(void*) {
     LOGI("hook_thread started, sleeping 5s");
     sleep(5);
+
+    if (g_running.load()) {
+        LOGW("Another thread is already running, exiting");
+        g_started.store(false);
+        return nullptr;
+    }
     g_running.store(true);
 
     while (g_running.load()) {
@@ -50,29 +56,45 @@ static void* hook_thread(void*) {
         if (display.height > display.width)
             std::swap(display.height, display.width);
 
-        auto graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::VULKAN);
-        LOGI("Graphics ptr: %p", graphics.get());
-        if (!graphics) {
-            LOGE("Failed to create graphics interface");
+        std::unique_ptr<AndroidImgui> graphics = nullptr;
+        GraphicsManager::GraphicsAPI selectedApi = GraphicsManager::VULKAN;
+        bool ok = false;
+
+        graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::VULKAN);
+        LOGI("Vulkan graphics ptr: %p", graphics.get());
+        if (graphics) {
+            ok = graphics->Init(window, display.width, display.height);
+            LOGI("Vulkan init result: %d", ok);
+        }
+
+        if (!ok) {
+            LOGE("Vulkan failed, trying OpenGL");
+            graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::OPENGL);
+            LOGI("OpenGL graphics ptr: %p", graphics.get());
+            if (graphics) {
+                ok = graphics->Init(window, display.width, display.height);
+                LOGI("OpenGL init result: %d", ok);
+            }
+        }
+
+        if (!ok) {
+            LOGE("OpenGL failed, trying Software");
+            graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::SOFTWARE);
+            LOGI("Software graphics ptr: %p", graphics.get());
+            if (graphics) {
+                ok = graphics->Init(window, display.width, display.height);
+                LOGI("Software init result: %d", ok);
+            }
+        }
+
+        if (!ok || !graphics) {
+            LOGE("All graphics backends failed");
             android::ANativeWindowCreator::Destroy(window);
-            sleep(1);
+            sleep(2);
             continue;
         }
 
-        bool ok = graphics->Init(window, display.width, display.height);
-        LOGI("Vulkan init result: %d", ok);
-        if (!ok) {
-            LOGE("Graphics init failed, falling back to OpenGL");
-            graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::OPENGL);
-            ok = graphics && graphics->Init(window, display.width, display.height);
-            LOGI("OpenGL fallback result: %d", ok);
-            if (!ok) {
-                LOGE("OpenGL fallback also failed");
-                android::ANativeWindowCreator::Destroy(window);
-                sleep(1);
-                continue;
-            }
-        }
+        LOGI("Graphics backend initialized successfully");
 
         ImGui::Android_LoadSystemFont(26);
         InitMenuStyle();
@@ -85,8 +107,11 @@ static void* hook_thread(void*) {
             graphics->EndFrame();
 
             if (ANativeWindow_getWidth(window) <= 0) {
+                LOGI("Window invalidated, restarting");
                 break;
             }
+
+            usleep(16000);
         }
 
         graphics->Shutdown();
@@ -95,6 +120,7 @@ static void* hook_thread(void*) {
     }
 
     g_started.store(false);
+    g_running.store(false);
     return nullptr;
 }
 
@@ -106,6 +132,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
         LOGI("key mismatch, bailing");
         return JNI_VERSION_1_6;
     }
+
 
     if (!g_started.exchange(true)) {
         LOGI("==============================================================");
@@ -123,6 +150,8 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
         pthread_t t;
         pthread_create(&t, nullptr, hook_thread, nullptr);
         pthread_detach(t);
+    } else {
+        LOGI("zxMenu already started, skipping");
     }
 
     return JNI_VERSION_1_6;

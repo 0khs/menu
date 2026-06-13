@@ -1,4 +1,4 @@
-#define VK_USE_PLATFORM_ANDROID_KHR   // <- TOP, before any include
+#define VK_USE_PLATFORM_ANDROID_KHR
 #include <cstdlib>
 #include <dlfcn.h>
 #include "VulkanGraphics.h"
@@ -6,33 +6,32 @@
 #include <vulkan/vulkan_android.h>
 #include <android/native_window.h>
 #include <unistd.h>
-#ifndef NDEBUG
+#include <android/log.h>
+
+#define VK_LOG_TAG "VulkanGraphics"
+#define VK_LOGE(...) __android_log_print(ANDROID_LOG_ERROR, VK_LOG_TAG, __VA_ARGS__)
+#define VK_LOGW(...) __android_log_print(ANDROID_LOG_WARN, VK_LOG_TAG, __VA_ARGS__)
 
 static void check_vk_result(VkResult err) {
-    if (err == 0)
-        return;
-    fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
-    if (err < 0)
-        abort();
+    if (err == VK_SUCCESS) return;
+    VK_LOGE("VkResult = %d", err);
 }
-
-#else
-
-static void check_vk_result(VkResult err) {
-}
-
-#endif
 
 VkPhysicalDevice VulkanGraphics::SetupVulkan_SelectPhysicalDevice() {
-    uint32_t gpu_count;
+    uint32_t gpu_count = 0;
     VkResult err = vkEnumeratePhysicalDevices(m_Instance, &gpu_count, nullptr);
-    check_vk_result(err);
-    IM_ASSERT(gpu_count > 0);
+    if (err != VK_SUCCESS || gpu_count == 0) {
+        VK_LOGE("No Vulkan physical devices found (err=%d, count=%u)", err, gpu_count);
+        return VK_NULL_HANDLE;
+    }
 
     ImVector<VkPhysicalDevice> gpus;
     gpus.resize(gpu_count);
     err = vkEnumeratePhysicalDevices(m_Instance, &gpu_count, gpus.Data);
-    check_vk_result(err);
+    if (err != VK_SUCCESS) {
+        VK_LOGE("vkEnumeratePhysicalDevices failed (err=%d)", err);
+        return VK_NULL_HANDLE;
+    }
 
     for (VkPhysicalDevice& device : gpus) {
         VkPhysicalDeviceProperties properties;
@@ -41,20 +40,23 @@ VkPhysicalDevice VulkanGraphics::SetupVulkan_SelectPhysicalDevice() {
             return device;
     }
 
-    if (gpu_count > 0)
-        return gpus[0];
-    return VK_NULL_HANDLE;
+    return gpus[0];
 }
 
 bool VulkanGraphics::Create() {
     if (InitVulkan() != 1) {
-        fprintf(stderr, "Vulkan is not supported %s\n", dlerror());
-        abort();
+        VK_LOGE("Vulkan not supported: %s", dlerror() ? dlerror() : "unknown");
+        return false;
     }
 
     wd = std::make_unique<ImGui_ImplVulkanH_Window>();
 
     void* libvulkan = dlopen("libvulkan.so", RTLD_NOW);
+    if (!libvulkan) {
+        VK_LOGE("Failed to open libvulkan.so");
+        return false;
+    }
+
     ImGui_ImplVulkan_LoadFunctions(0, [](const char* function_name, void* handle) -> PFN_vkVoidFunction {
         return reinterpret_cast<PFN_vkVoidFunction>(dlsym(handle, function_name));
     }, libvulkan);
@@ -69,65 +71,57 @@ bool VulkanGraphics::Create() {
         VkApplicationInfo appInfo = {
             .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
             .pNext = nullptr,
-            .pApplicationName = "pApplicationName",
+            .pApplicationName = "zxMenu",
             .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-            .pEngineName = "pEngineName",
+            .pEngineName = "zxMenu",
             .engineVersion = VK_MAKE_VERSION(1, 0, 0),
             .apiVersion = VK_MAKE_VERSION(1, 1, 0),
         };
         VkInstanceCreateInfo create_info = {};
         create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         create_info.pApplicationInfo = &appInfo;
-#ifdef IMGUI_VULKAN_DEBUG_REPORT
-        const char* layers[] = {"VK_LAYER_KHRONOS_validation"};
-        create_info.enabledLayerCount = 1;
-        create_info.ppEnabledLayerNames = layers;
-
-        const char** extensions_ext = (const char**)malloc(sizeof(const char*) * (instance_extensions_count + 1));
-        memcpy(extensions_ext, instance_extensions, instance_extensions_count * sizeof(const char*));
-        extensions_ext[instance_extensions_count] = "VK_EXT_debug_report";
-        create_info.enabledExtensionCount = instance_extensions_count + 1;
-        create_info.ppEnabledExtensionNames = extensions_ext;
-
-        err = vkCreateInstance(&create_info, m_Allocator, &m_Instance);
-        check_vk_result(err);
-        free(extensions_ext);
-
-        auto vkCreateDebugReportCallbackEXT = (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(
-            m_Instance, "vkCreateDebugReportCallbackEXT");
-        IM_ASSERT(vkCreateDebugReportCallbackEXT != NULL);
-
-        VkDebugReportCallbackCreateInfoEXT debug_report_ci = {};
-        debug_report_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-        debug_report_ci.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-            VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-        debug_report_ci.pfnCallback = debug_report;
-        debug_report_ci.pUserData = NULL;
-        err = vkCreateDebugReportCallbackEXT(m_Instance, &debug_report_ci, m_Allocator, &m_DebugReport);
-        check_vk_result(err);
-#else
         create_info.enabledExtensionCount = instance_extensions_count;
         create_info.ppEnabledExtensionNames = instance_extensions;
         err = vkCreateInstance(&create_info, m_Allocator, &m_Instance);
-        check_vk_result(err);
-        IM_UNUSED(m_DebugReport);
-#endif
+        if (err != VK_SUCCESS) {
+            VK_LOGE("vkCreateInstance failed: %d", err);
+            return false;
+        }
     }
 
     m_PhysicalDevice = SetupVulkan_SelectPhysicalDevice();
+    if (m_PhysicalDevice == VK_NULL_HANDLE) {
+        VK_LOGE("No suitable physical device found");
+        vkDestroyInstance(m_Instance, m_Allocator);
+        m_Instance = VK_NULL_HANDLE;
+        return false;
+    }
 
     {
-        uint32_t count;
+        uint32_t count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &count, nullptr);
-        VkQueueFamilyProperties* queues = (VkQueueFamilyProperties*)malloc(sizeof(VkQueueFamilyProperties) * count);
-        vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &count, queues);
-        for (uint32_t i = 0; i < count; i++)
+        if (count == 0) {
+            VK_LOGE("No queue families found");
+            vkDestroyInstance(m_Instance, m_Allocator);
+            m_Instance = VK_NULL_HANDLE;
+            return false;
+        }
+        ImVector<VkQueueFamilyProperties> queues;
+        queues.resize(count);
+        vkGetPhysicalDeviceQueueFamilyProperties(m_PhysicalDevice, &count, queues.Data);
+        m_QueueFamily = (uint32_t)-1;
+        for (uint32_t i = 0; i < count; i++) {
             if (queues[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
                 m_QueueFamily = i;
                 break;
             }
-        free(queues);
-        IM_ASSERT(m_QueueFamily != (uint32_t) -1);
+        }
+        if (m_QueueFamily == (uint32_t)-1) {
+            VK_LOGE("No graphics queue family found");
+            vkDestroyInstance(m_Instance, m_Allocator);
+            m_Instance = VK_NULL_HANDLE;
+            return false;
+        }
     }
 
     {
@@ -139,6 +133,7 @@ bool VulkanGraphics::Create() {
         vkEnumerateDeviceExtensionProperties(m_PhysicalDevice, nullptr, &properties_count, nullptr);
         properties.resize(properties_count);
         vkEnumerateDeviceExtensionProperties(m_PhysicalDevice, nullptr, &properties_count, properties.Data);
+
 #ifdef VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
         if (IsExtensionAvailable(properties, VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
             device_extensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
@@ -157,12 +152,18 @@ bool VulkanGraphics::Create() {
         create_info.enabledExtensionCount = (uint32_t)device_extensions.Size;
         create_info.ppEnabledExtensionNames = device_extensions.Data;
         err = vkCreateDevice(m_PhysicalDevice, &create_info, m_Allocator, &m_Device);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) {
+            VK_LOGE("vkCreateDevice failed: %d", err);
+            vkDestroyInstance(m_Instance, m_Allocator);
+            m_Instance = VK_NULL_HANDLE;
+            m_PhysicalDevice = VK_NULL_HANDLE;
+            return false;
+        }
         vkGetDeviceQueue(m_Device, m_QueueFamily, 0, &m_Queue);
     }
+
     {
-        VkDescriptorPoolSize pool_sizes[] =
-        {
+        VkDescriptorPoolSize pool_sizes[] = {
             {VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
             {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
             {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
@@ -182,8 +183,13 @@ bool VulkanGraphics::Create() {
         pool_info.poolSizeCount = (uint32_t)IM_ARRAYSIZE(pool_sizes);
         pool_info.pPoolSizes = pool_sizes;
         err = vkCreateDescriptorPool(m_Device, &pool_info, m_Allocator, &m_DescriptorPool);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) {
+            VK_LOGE("vkCreateDescriptorPool failed: %d", err);
+            Cleanup();
+            return false;
+        }
     }
+
     {
         VkSurfaceKHR surface;
         VkAndroidSurfaceCreateInfoKHR createInfo{
@@ -193,17 +199,22 @@ bool VulkanGraphics::Create() {
             .window = m_Window
         };
 
-        err = vkCreateAndroidSurfaceKHR(m_Instance, &createInfo, m_Allocator,
-                                        &surface);
-        check_vk_result(err);
+        err = vkCreateAndroidSurfaceKHR(m_Instance, &createInfo, m_Allocator, &surface);
+        if (err != VK_SUCCESS) {
+            VK_LOGE("vkCreateAndroidSurfaceKHR failed: %d", err);
+            Cleanup();
+            return false;
+        }
         wd->Surface = surface;
 
         VkBool32 res;
-        vkGetPhysicalDeviceSurfaceSupportKHR(m_PhysicalDevice, m_QueueFamily, wd->Surface, &res);
-        if (res != VK_TRUE) {
-            fprintf(stderr, "Error no WSI support on physical device 0\n");
-            exit(-1);
+        err = vkGetPhysicalDeviceSurfaceSupportKHR(m_PhysicalDevice, m_QueueFamily, wd->Surface, &res);
+        if (err != VK_SUCCESS || res != VK_TRUE) {
+            VK_LOGE("No WSI support on physical device (err=%d, res=%d)", err, (int)res);
+            Cleanup();
+            return false;
         }
+
         const VkFormat requestSurfaceImageFormat[] = {
             VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM,
             VK_FORMAT_B8G8R8_UNORM, VK_FORMAT_R8G8B8_UNORM
@@ -224,10 +235,14 @@ bool VulkanGraphics::Create() {
         wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(m_PhysicalDevice, wd->Surface, &present_modes[0],
                                                               IM_ARRAYSIZE(present_modes));
 
-        IM_ASSERT(m_MinImageCount >= 2);
-        ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(), m_QueueFamily,
-                                               m_Allocator,
-                                               (int)m_Width, (int)m_Height, m_MinImageCount, 0);
+        err = ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(), m_QueueFamily,
+                                                     m_Allocator,
+                                                     (int)m_Width, (int)m_Height, m_MinImageCount, 0);
+        if (err != VK_SUCCESS) {
+            VK_LOGE("ImGui_ImplVulkanH_CreateOrResizeWindow failed: %d", err);
+            Cleanup();
+            return false;
+        }
     }
 
     return true;
@@ -242,10 +257,10 @@ void VulkanGraphics::Setup() {
     init_info.Queue = m_Queue;
     init_info.PipelineCache = m_PipelineCache;
     init_info.DescriptorPool = m_DescriptorPool;
-    init_info.PipelineInfoMain.RenderPass   = wd->RenderPass;
+    init_info.PipelineInfoMain.RenderPass = wd->RenderPass;
     init_info.MinImageCount = m_MinImageCount;
     init_info.ImageCount = wd->ImageCount;
-    init_info.PipelineInfoMain.MSAASamples  = VK_SAMPLE_COUNT_1_BIT;
+    init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
     init_info.Allocator = m_Allocator;
     init_info.CheckVkResultFn = check_vk_result;
     ImGui_ImplVulkan_Init(&init_info);
@@ -265,8 +280,13 @@ void VulkanGraphics::PrepareFrame(bool resize) {
                 m_LastWidth = width;
                 m_LastHeight = height;
                 ImGui_ImplVulkan_SetMinImageCount(m_MinImageCount);
-                ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(),
-                                                       m_QueueFamily, m_Allocator, width, height, m_MinImageCount, 0);
+                VkResult err = ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(),
+                                                                      m_QueueFamily, m_Allocator, width, height, m_MinImageCount, 0);
+                if (err != VK_SUCCESS) {
+                    VK_LOGE("Resize failed: %d", err);
+                    m_SwapChainRebuild = true;
+                    return;
+                }
                 wd->FrameIndex = 0;
                 m_SwapChainRebuild = false;
             }
@@ -276,33 +296,39 @@ void VulkanGraphics::PrepareFrame(bool resize) {
 }
 
 void VulkanGraphics::Render(ImDrawData* drawData) {
+    if (!wd || !m_Device || wd->SemaphoreCount == 0) return;
+
     VkResult err;
 
     VkSemaphore image_acquired_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].ImageAcquiredSemaphore;
     VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
     err = vkAcquireNextImageKHR(m_Device, wd->Swapchain, UINT64_MAX, image_acquired_semaphore, VK_NULL_HANDLE,
                                 &wd->FrameIndex);
-    if (err == VK_ERROR_OUT_OF_DATE_KHR) {
+    if (err == VK_ERROR_OUT_OF_DATE_KHR || err == VK_SUBOPTIMAL_KHR) {
         m_SwapChainRebuild = true;
+        return;
+    }
+    if (err != VK_SUCCESS) {
+        VK_LOGE("vkAcquireNextImageKHR failed: %d", err);
         return;
     }
 
     ImGui_ImplVulkanH_Frame* fd = &wd->Frames[wd->FrameIndex];
     {
         err = vkWaitForFences(m_Device, 1, &fd->Fence, VK_TRUE, UINT64_MAX);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { VK_LOGE("vkWaitForFences failed: %d", err); return; }
 
         err = vkResetFences(m_Device, 1, &fd->Fence);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { VK_LOGE("vkResetFences failed: %d", err); return; }
     }
     {
         err = vkResetCommandPool(m_Device, fd->CommandPool, 0);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { VK_LOGE("vkResetCommandPool failed: %d", err); return; }
         VkCommandBufferBeginInfo info = {};
         info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         err = vkBeginCommandBuffer(fd->CommandBuffer, &info);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { VK_LOGE("vkBeginCommandBuffer failed: %d", err); return; }
     }
     {
         VkRenderPassBeginInfo info = {};
@@ -332,14 +358,13 @@ void VulkanGraphics::Render(ImDrawData* drawData) {
         info.pSignalSemaphores = &render_complete_semaphore;
 
         err = vkEndCommandBuffer(fd->CommandBuffer);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { VK_LOGE("vkEndCommandBuffer failed: %d", err); return; }
         err = vkQueueSubmit(m_Queue, 1, &info, fd->Fence);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { VK_LOGE("vkQueueSubmit failed: %d", err); return; }
     }
 
     {
-        if (m_SwapChainRebuild)
-            return;
+        if (m_SwapChainRebuild) return;
         VkSemaphore render_complete_semaphore = wd->FrameSemaphores[wd->SemaphoreIndex].RenderCompleteSemaphore;
         VkPresentInfoKHR info = {};
         info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -348,9 +373,13 @@ void VulkanGraphics::Render(ImDrawData* drawData) {
         info.swapchainCount = 1;
         info.pSwapchains = &wd->Swapchain;
         info.pImageIndices = &wd->FrameIndex;
-        VkResult err = vkQueuePresentKHR(m_Queue, &info);
-        if (err == VK_ERROR_OUT_OF_DATE_KHR) {
+        VkResult present_err = vkQueuePresentKHR(m_Queue, &info);
+        if (present_err == VK_ERROR_OUT_OF_DATE_KHR || present_err == VK_SUBOPTIMAL_KHR) {
             m_SwapChainRebuild = true;
+            return;
+        }
+        if (present_err != VK_SUCCESS) {
+            VK_LOGE("vkQueuePresentKHR failed: %d", present_err);
             return;
         }
         wd->SemaphoreIndex = (wd->SemaphoreIndex + 1) % wd->SemaphoreCount;
@@ -358,23 +387,43 @@ void VulkanGraphics::Render(ImDrawData* drawData) {
 }
 
 void VulkanGraphics::PrepareShutdown() {
+    if (!m_Device) return;
     VkResult err = vkDeviceWaitIdle(m_Device);
-    check_vk_result(err);
+    if (err != VK_SUCCESS) {
+        VK_LOGE("vkDeviceWaitIdle failed during shutdown: %d", err);
+    }
     ImGui_ImplVulkan_Shutdown();
 }
 
 void VulkanGraphics::Cleanup() {
-    ImGui_ImplVulkanH_DestroyWindow(m_Instance, m_Device, wd.get(), m_Allocator);
-    vkDestroyDescriptorPool(m_Device, m_DescriptorPool, m_Allocator);
+    if (wd && wd->Device) {
+        ImGui_ImplVulkanH_DestroyWindow(m_Instance, m_Device, wd.get(), m_Allocator);
+    }
+    wd.reset();
 
-#ifdef APP_USE_VULKAN_DEBUG_REPORT
-    auto vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(
-        m_Instance, "vkDestroyDebugReportCallbackEXT");
-    vkDestroyDebugReportCallbackEXT(m_Instance, m_DebugReport, m_Allocator);
-#endif
+    if (m_DescriptorPool != VK_NULL_HANDLE && m_Device != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(m_Device, m_DescriptorPool, m_Allocator);
+        m_DescriptorPool = VK_NULL_HANDLE;
+    }
 
-    vkDestroyDevice(m_Device, m_Allocator);
-    vkDestroyInstance(m_Instance, m_Allocator);
+    if (m_Device != VK_NULL_HANDLE) {
+        vkDestroyDevice(m_Device, m_Allocator);
+        m_Device = VK_NULL_HANDLE;
+    }
+
+    if (m_Instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(m_Instance, m_Allocator);
+        m_Instance = VK_NULL_HANDLE;
+    }
+
+    m_PhysicalDevice = VK_NULL_HANDLE;
+    m_Queue = VK_NULL_HANDLE;
+    m_QueueFamily = (uint32_t)-1;
+    m_DebugReport = VK_NULL_HANDLE;
+    m_PipelineCache = VK_NULL_HANDLE;
+    m_LastWidth = 0;
+    m_LastHeight = 0;
+    m_SwapChainRebuild = false;
 }
 
 uint32_t VulkanGraphics::findMemoryType(uint32_t type_filter, VkMemoryPropertyFlags properties) {
@@ -389,6 +438,11 @@ uint32_t VulkanGraphics::findMemoryType(uint32_t type_filter, VkMemoryPropertyFl
 }
 
 BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
+    if (!m_Device || !wd || wd->FrameIndex >= (uint32_t)wd->ImageCount) {
+        VK_LOGE("Cannot load texture: device not ready");
+        return nullptr;
+    }
+
     auto* tex_data = new VulkanTextureData();
     tex_data->Width = tex->Width;
     tex_data->Height = tex->Height;
@@ -413,17 +467,27 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         err = vkCreateImage(m_Device, &info, m_Allocator, &tex_data->Image);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { delete tex_data; return nullptr; }
         VkMemoryRequirements req;
         vkGetImageMemoryRequirements(m_Device, tex_data->Image, &req);
         VkMemoryAllocateInfo alloc_info = {};
         alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         alloc_info.allocationSize = req.size;
         alloc_info.memoryTypeIndex = findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (alloc_info.memoryTypeIndex == 0xFFFFFFFF) {
+            vkDestroyImage(m_Device, tex_data->Image, m_Allocator);
+            delete tex_data;
+            return nullptr;
+        }
         err = vkAllocateMemory(m_Device, &alloc_info, m_Allocator, &tex_data->ImageMemory);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { vkDestroyImage(m_Device, tex_data->Image, m_Allocator); delete tex_data; return nullptr; }
         err = vkBindImageMemory(m_Device, tex_data->Image, tex_data->ImageMemory, 0);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) {
+            vkFreeMemory(m_Device, tex_data->ImageMemory, m_Allocator);
+            vkDestroyImage(m_Device, tex_data->Image, m_Allocator);
+            delete tex_data;
+            return nullptr;
+        }
     }
 
     {
@@ -436,7 +500,12 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         info.subresourceRange.levelCount = 1;
         info.subresourceRange.layerCount = 1;
         err = vkCreateImageView(m_Device, &info, m_Allocator, &tex_data->ImageView);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) {
+            vkFreeMemory(m_Device, tex_data->ImageMemory, m_Allocator);
+            vkDestroyImage(m_Device, tex_data->Image, m_Allocator);
+            delete tex_data;
+            return nullptr;
+        }
     }
 
     {
@@ -452,7 +521,13 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         sampler_info.maxLod = 1000;
         sampler_info.maxAnisotropy = 1.0f;
         err = vkCreateSampler(m_Device, &sampler_info, m_Allocator, &tex_data->Sampler);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) {
+            vkDestroyImageView(m_Device, tex_data->ImageView, m_Allocator);
+            vkFreeMemory(m_Device, tex_data->ImageMemory, m_Allocator);
+            vkDestroyImage(m_Device, tex_data->Image, m_Allocator);
+            delete tex_data;
+            return nullptr;
+        }
     }
 
     tex_data->DS = (void*)ImGui_ImplVulkan_AddTexture(tex_data->Sampler, tex_data->ImageView,
@@ -465,35 +540,36 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         err = vkCreateBuffer(m_Device, &buffer_info, m_Allocator, &tex_data->UploadBuffer);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { RemoveTexture(tex_data); return nullptr; }
         VkMemoryRequirements req;
         vkGetBufferMemoryRequirements(m_Device, tex_data->UploadBuffer, &req);
         VkMemoryAllocateInfo alloc_info = {};
         alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         alloc_info.allocationSize = req.size;
         alloc_info.memoryTypeIndex = findMemoryType(req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+        if (alloc_info.memoryTypeIndex == 0xFFFFFFFF) { RemoveTexture(tex_data); return nullptr; }
         err = vkAllocateMemory(m_Device, &alloc_info, m_Allocator, &tex_data->UploadBufferMemory);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { RemoveTexture(tex_data); return nullptr; }
         err = vkBindBufferMemory(m_Device, tex_data->UploadBuffer, tex_data->UploadBufferMemory, 0);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { RemoveTexture(tex_data); return nullptr; }
     }
 
     {
         void* map = NULL;
         err = vkMapMemory(m_Device, tex_data->UploadBufferMemory, 0, image_size, 0, &map);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { RemoveTexture(tex_data); return nullptr; }
         memcpy(map, pixel_data, image_size);
         VkMappedMemoryRange range[1] = {};
         range[0].sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
         range[0].memory = tex_data->UploadBufferMemory;
         range[0].size = image_size;
         err = vkFlushMappedMemoryRanges(m_Device, 1, range);
-        check_vk_result(err);
         vkUnmapMemory(m_Device, tex_data->UploadBufferMemory);
+        if (err != VK_SUCCESS) { RemoveTexture(tex_data); return nullptr; }
     }
 
     VkCommandPool command_pool = wd->Frames[wd->FrameIndex].CommandPool;
-    VkCommandBuffer command_buffer;
+    VkCommandBuffer command_buffer = VK_NULL_HANDLE;
     {
         VkCommandBufferAllocateInfo alloc_info{};
         alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -502,13 +578,13 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         alloc_info.commandBufferCount = 1;
 
         err = vkAllocateCommandBuffers(m_Device, &alloc_info, &command_buffer);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { RemoveTexture(tex_data); return nullptr; }
 
         VkCommandBufferBeginInfo begin_info = {};
         begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         err = vkBeginCommandBuffer(command_buffer, &begin_info);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { vkFreeCommandBuffers(m_Device, command_pool, 1, &command_buffer); RemoveTexture(tex_data); return nullptr; }
     }
 
     {
@@ -524,8 +600,7 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         copy_barrier[0].subresourceRange.levelCount = 1;
         copy_barrier[0].subresourceRange.layerCount = 1;
         vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, NULL,
-                             0,
-                             NULL, 1, copy_barrier);
+                             0, NULL, 1, copy_barrier);
 
         VkBufferImageCopy region = {};
         region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -549,8 +624,7 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         use_barrier[0].subresourceRange.levelCount = 1;
         use_barrier[0].subresourceRange.layerCount = 1;
         vkCmdPipelineBarrier(command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                             0,
-                             0, NULL, 0, NULL, 1, use_barrier);
+                             0, 0, NULL, 0, NULL, 1, use_barrier);
     }
 
     {
@@ -559,24 +633,33 @@ BaseTexData* VulkanGraphics::LoadTexture(BaseTexData* tex, void* pixel_data) {
         end_info.commandBufferCount = 1;
         end_info.pCommandBuffers = &command_buffer;
         err = vkEndCommandBuffer(command_buffer);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { vkFreeCommandBuffers(m_Device, command_pool, 1, &command_buffer); RemoveTexture(tex_data); return nullptr; }
         err = vkQueueSubmit(m_Queue, 1, &end_info, VK_NULL_HANDLE);
-        check_vk_result(err);
+        if (err != VK_SUCCESS) { vkFreeCommandBuffers(m_Device, command_pool, 1, &command_buffer); RemoveTexture(tex_data); return nullptr; }
         err = vkDeviceWaitIdle(m_Device);
-        check_vk_result(err);
+        vkFreeCommandBuffers(m_Device, command_pool, 1, &command_buffer);
+        if (err != VK_SUCCESS) { RemoveTexture(tex_data); return nullptr; }
     }
 
     return tex_data;
 }
 
 void VulkanGraphics::RemoveTexture(BaseTexData* tex) {
+    if (!tex || !m_Device) return;
     auto* tex_data = (VulkanTextureData*)(tex);
-    vkFreeMemory(m_Device, tex_data->UploadBufferMemory, nullptr);
-    vkDestroyBuffer(m_Device, tex_data->UploadBuffer, nullptr);
-    vkDestroySampler(m_Device, tex_data->Sampler, nullptr);
-    vkDestroyImageView(m_Device, tex_data->ImageView, nullptr);
-    vkDestroyImage(m_Device, tex_data->Image, nullptr);
-    vkFreeMemory(m_Device, tex_data->ImageMemory, nullptr);
-    ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)tex_data->DS);
+    if (tex_data->UploadBufferMemory != VK_NULL_HANDLE)
+        vkFreeMemory(m_Device, tex_data->UploadBufferMemory, nullptr);
+    if (tex_data->UploadBuffer != VK_NULL_HANDLE)
+        vkDestroyBuffer(m_Device, tex_data->UploadBuffer, nullptr);
+    if (tex_data->Sampler != VK_NULL_HANDLE)
+        vkDestroySampler(m_Device, tex_data->Sampler, nullptr);
+    if (tex_data->ImageView != VK_NULL_HANDLE)
+        vkDestroyImageView(m_Device, tex_data->ImageView, nullptr);
+    if (tex_data->Image != VK_NULL_HANDLE)
+        vkDestroyImage(m_Device, tex_data->Image, nullptr);
+    if (tex_data->ImageMemory != VK_NULL_HANDLE)
+        vkFreeMemory(m_Device, tex_data->ImageMemory, nullptr);
+    if (tex_data->DS)
+        ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)tex_data->DS);
     delete tex_data;
 }
