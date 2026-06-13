@@ -33,9 +33,14 @@ LOCAL_SRC_FILES := \
     Natives/my_imgui.cpp \
     Natives/my_imgui_impl_android.cpp \
     Natives/ELF/elf_util.cpp \
+    ImGui/imgui.cpp \
+    ImGui/imgui_draw.cpp \
+    ImGui/imgui_tables.cpp \
+    ImGui/imgui_widgets.cpp \
+    ImGui/backends/imgui_impl_android.cpp \
     ImGui/backends/imgui_impl_opengl3.cpp \
-    ImGui/backends/imgui_impl_vulkan.cpp   
-
+    ImGui/backends/imgui_impl_vulkan.cpp
+    
 LOCAL_STATIC_LIBRARIES := Dobby
 LOCAL_LDLIBS := -lm -ldl -lz -llog -landroid -lEGL -lGLESv3
 
