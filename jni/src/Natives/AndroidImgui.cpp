@@ -2,6 +2,8 @@
 #include "AndroidImgui.h"
 #include "imgui.h"
 #include "my_imgui_impl_android.h"
+
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 bool AndroidImgui::Init(ANativeWindow *window, float width, float height) {
