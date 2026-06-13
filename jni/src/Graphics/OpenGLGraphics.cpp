@@ -3,7 +3,6 @@
 #include "OpenGLGraphics.h"
 #include "imgui_impl_opengl3.h"
 
-
 bool OpenGLGraphics::Create() {
     const EGLint egl_attributes[] = {EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8,
                                      EGL_ALPHA_SIZE, 8, EGL_DEPTH_SIZE, 16,
@@ -11,20 +10,29 @@ bool OpenGLGraphics::Create() {
                                      EGL_WINDOW_BIT, EGL_NONE};
 
     m_EglDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    eglInitialize(m_EglDisplay, nullptr, nullptr);
+    if (m_EglDisplay == EGL_NO_DISPLAY) return false;
+
+    if (!eglInitialize(m_EglDisplay, nullptr, nullptr)) return false;
+
     EGLint num_configs = 0;
-    eglChooseConfig(m_EglDisplay, egl_attributes, nullptr, 0, &num_configs);
+    if (!eglChooseConfig(m_EglDisplay, egl_attributes, nullptr, 0, &num_configs)) return false;
+
     EGLConfig egl_config;
-    eglChooseConfig(m_EglDisplay, egl_attributes, &egl_config, 1, &num_configs);
+    if (!eglChooseConfig(m_EglDisplay, egl_attributes, &egl_config, 1, &num_configs)) return false;
+
     EGLint egl_format;
     eglGetConfigAttrib(m_EglDisplay, egl_config, EGL_NATIVE_VISUAL_ID, &egl_format);
     ANativeWindow_setBuffersGeometry(m_Window, 0, 0, egl_format);
 
     const EGLint egl_context_attributes[] = {EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE};
-    m_EglContext = eglCreateContext(m_EglDisplay, egl_config, EGL_NO_CONTEXT,
-                                    egl_context_attributes);
+    m_EglContext = eglCreateContext(m_EglDisplay, egl_config, EGL_NO_CONTEXT, egl_context_attributes);
+    if (m_EglContext == EGL_NO_CONTEXT) return false;
+
     m_EglSurface = eglCreateWindowSurface(m_EglDisplay, egl_config, m_Window, nullptr);
-    eglMakeCurrent(m_EglDisplay, m_EglSurface, m_EglSurface, m_EglContext);
+    if (m_EglSurface == EGL_NO_SURFACE) return false;
+
+    if (!eglMakeCurrent(m_EglDisplay, m_EglSurface, m_EglSurface, m_EglContext)) return false;
+
     glClearColor(0.0, 0.0, 0.0, 0.0);
     return true;
 }
@@ -38,9 +46,17 @@ void OpenGLGraphics::PrepareFrame(bool resize) {
 }
 
 void OpenGLGraphics::Render(ImDrawData *drawData) {
+    if (m_EglDisplay == EGL_NO_DISPLAY || m_EglSurface == EGL_NO_SURFACE) return;
+
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(drawData);
-    eglSwapBuffers(m_EglDisplay, m_EglSurface);
+
+    if (!eglSwapBuffers(m_EglDisplay, m_EglSurface)) {
+        EGLint err = eglGetError();
+        if (err == EGL_BAD_SURFACE || err == EGL_BAD_NATIVE_WINDOW || err == EGL_CONTEXT_LOST) {
+            Cleanup();
+        }
+    }
 }
 
 void OpenGLGraphics::PrepareShutdown() {
@@ -48,10 +64,12 @@ void OpenGLGraphics::PrepareShutdown() {
 }
 
 void OpenGLGraphics::Cleanup() {
-    eglMakeCurrent(m_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroyContext(m_EglDisplay, m_EglContext);
-    eglDestroySurface(m_EglDisplay, m_EglSurface);
-    eglTerminate(m_EglDisplay);
+    if (m_EglDisplay != EGL_NO_DISPLAY) {
+        eglMakeCurrent(m_EglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+        if (m_EglContext != EGL_NO_CONTEXT) eglDestroyContext(m_EglDisplay, m_EglContext);
+        if (m_EglSurface != EGL_NO_SURFACE) eglDestroySurface(m_EglDisplay, m_EglSurface);
+        eglTerminate(m_EglDisplay);
+    }
     m_EglDisplay = EGL_NO_DISPLAY;
     m_EglSurface = EGL_NO_SURFACE;
     m_EglContext = EGL_NO_CONTEXT;
