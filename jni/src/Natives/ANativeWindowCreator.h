@@ -380,6 +380,7 @@ namespace android {
                 if (12 <= Functionals::GetInstance().systemVersion) {
                     static SurfaceComposerClientTransaction transaction;
                     transaction.SetTrustedOverlay(result, true);
+                    transaction.SetLayer(result, INT32_MAX);
                     transaction.Apply(false, true);
                 }
 
