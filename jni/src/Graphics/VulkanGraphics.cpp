@@ -235,14 +235,9 @@ bool VulkanGraphics::Create() {
         wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(m_PhysicalDevice, wd->Surface, &present_modes[0],
                                                               IM_ARRAYSIZE(present_modes));
 
-        err = ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(), m_QueueFamily,
-                                                     m_Allocator,
-                                                     (int)m_Width, (int)m_Height, m_MinImageCount, 0);
-        if (err != VK_SUCCESS) {
-            VK_LOGE("ImGui_ImplVulkanH_CreateOrResizeWindow failed: %d", err);
-            Cleanup();
-            return false;
-        }
+        ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(), m_QueueFamily,
+                                               m_Allocator,
+                                               (int)m_Width, (int)m_Height, m_MinImageCount, 0);
     }
 
     return true;
@@ -280,13 +275,8 @@ void VulkanGraphics::PrepareFrame(bool resize) {
                 m_LastWidth = width;
                 m_LastHeight = height;
                 ImGui_ImplVulkan_SetMinImageCount(m_MinImageCount);
-                VkResult err = ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(),
-                                                                      m_QueueFamily, m_Allocator, width, height, m_MinImageCount, 0);
-                if (err != VK_SUCCESS) {
-                    VK_LOGE("Resize failed: %d", err);
-                    m_SwapChainRebuild = true;
-                    return;
-                }
+                ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(),
+                                                       m_QueueFamily, m_Allocator, width, height, m_MinImageCount, 0);
                 wd->FrameIndex = 0;
                 m_SwapChainRebuild = false;
             }
@@ -396,7 +386,7 @@ void VulkanGraphics::PrepareShutdown() {
 }
 
 void VulkanGraphics::Cleanup() {
-    if (wd && wd->Device) {
+    if (wd) {
         ImGui_ImplVulkanH_DestroyWindow(m_Instance, m_Device, wd.get(), m_Allocator);
     }
     wd.reset();
