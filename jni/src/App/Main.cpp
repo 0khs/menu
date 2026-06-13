@@ -17,11 +17,13 @@ static void* hook_thread(void*) {
     sleep(5);
 
     auto display = android::ANativeWindowCreator::GetDisplayInfo();
+    LOGI("Display: %dx%d", display.width, display.height);
     if (display.height > display.width) {
         std::swap(display.height, display.width);
     }
 
     auto window = android::ANativeWindowCreator::Create("zxMenu", display.width, display.height);
+    LOGI("Window: %p", window);
     if (!window) {
         LOGE("Failed to create native window");
         g_started.store(false);
@@ -29,6 +31,7 @@ static void* hook_thread(void*) {
     }
 
     auto graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::VULKAN);
+    LOGI("Graphics ptr: %p", graphics.get());
     if (!graphics) {
         LOGE("Failed to create graphics interface");
         android::ANativeWindowCreator::Destroy(window);
@@ -36,10 +39,14 @@ static void* hook_thread(void*) {
         return nullptr;
     }
 
-    if (!graphics->Init(window, display.width, display.height)) {
+    bool ok = graphics->Init(window, display.width, display.height);
+    LOGI("Vulkan init result: %d", ok);
+    if (!ok) {
         LOGE("Graphics init failed, falling back to OpenGL");
         graphics = GraphicsManager::getGraphicsInterface(GraphicsManager::OPENGL);
-        if (!graphics || !graphics->Init(window, display.width, display.height)) {
+        ok = graphics && graphics->Init(window, display.width, display.height);
+        LOGI("OpenGL fallback result: %d", ok);
+        if (!ok) {
             LOGE("OpenGL fallback also failed");
             android::ANativeWindowCreator::Destroy(window);
             g_started.store(false);
@@ -48,6 +55,7 @@ static void* hook_thread(void*) {
     }
 
     ImGui::Android_LoadSystemFont(26);
+    InitMenuStyle();
     Touch::Init({(float)display.width, (float)display.height}, true);
 
     g_running.store(true);

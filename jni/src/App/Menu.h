@@ -12,9 +12,8 @@
 struct Last_ImRect { float Pos_x, Pos_y, Size_x, Size_y; };
 #endif
 
-static Last_ImRect LastCoordinate{0.f, 0.f, 0.f, 0.f};
-
-static std::atomic<bool> g_menu_visible{true};
+inline Last_ImRect LastCoordinate{0.f, 0.f, 0.f, 0.f};
+inline std::atomic<bool> g_menu_visible{true};
 
 static void RainbowSeparator(float thickness, int alpha) {
     ImGuiWindow* w = ImGui::GetCurrentWindow();
