@@ -92,6 +92,7 @@ static void* hook_thread(void*) {
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
+    android::ANativeWindowCreator::SetVM(vm);
     LOGI("JNI_OnLoad called, key=%p", key);
 
     if (key != reinterpret_cast<void*>(1337)) {
@@ -110,7 +111,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
         LOGI("==============================================================");
         LOGI("                zxMenu Initialized Successfully");
         LOGI("--------------------------------------------------------------");
-        LOGI("                  Developed by @O0khs");
+        LOGI("                    Developed by @O0khs");
         LOGI("==============================================================");
         pthread_t t;
         pthread_create(&t, nullptr, hook_thread, nullptr);
