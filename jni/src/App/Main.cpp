@@ -1,6 +1,8 @@
 #include <jni.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <cstdio>
+#include <cstring>
 #include <atomic>
 #include "ANativeWindowCreator.h"
 #include "GraphicsManager.h"
@@ -32,7 +34,7 @@ static void* hook_thread(void*) {
             sleep(1);
         }
 
-        auto window = android::ANativeWindowCreator::Create("zxMenu", display.width, display.height);
+        auto window = android::ANativeWindowCreator::Create("zxMenu", display.width, display.height, false);
         LOGI("Window: %p", window);
         if (!window) {
             LOGE("Failed to create native window");
@@ -130,6 +132,17 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
 
     if (key != reinterpret_cast<void*>(1337)) {
         LOGI("key mismatch, bailing");
+        return JNI_VERSION_1_6;
+    }
+
+    char cmdline[256] = {0};
+    FILE* f = fopen("/proc/self/cmdline", "r");
+    if (f) {
+        fread(cmdline, 1, sizeof(cmdline) - 1, f);
+        fclose(f);
+    }
+    if (strcmp(cmdline, "com.ForgeGames.SpecialForcesGroup2") != 0) {
+        LOGI("non-main process (%s), bailing", cmdline);
         return JNI_VERSION_1_6;
     }
 
