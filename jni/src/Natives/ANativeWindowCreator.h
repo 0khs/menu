@@ -119,6 +119,7 @@ namespace android {
             void* (*SurfaceComposerClient__Transaction__SetLayer)(void* thiz, StrongPointer<void>& surfaceControl, int32_t z) = nullptr;
             void* (*SurfaceComposerClient__Transaction__SetTrustedOverlay)(void* thiz, StrongPointer<void>& surfaceControl, bool isTrustedOverlay) = nullptr;
             int32_t (*SurfaceComposerClient__Transaction__Apply)(void* thiz, bool synchronous, bool oneWay) = nullptr;
+            void* (*SurfaceComposerClient__Transaction__SetLayerStack)(void* thiz, StrongPointer<void>& surfaceControl, uint32_t layerStackId) = nullptr;
             int32_t (*SurfaceControl__Validate)(void* thiz) = nullptr;
             StrongPointer<Surface> (*SurfaceControl__GetSurface)(void* thiz) = nullptr;
             void (*SurfaceControl__DisConnect)(void* thiz) = nullptr;
@@ -234,6 +235,7 @@ namespace android {
                 ResolveMethod(SurfaceComposerClient__Transaction, SetLayer, libgui, "_ZN7android21SurfaceComposerClient11Transaction8setLayerERKNS_2spINS_14SurfaceControlEEEi");
                 ResolveMethod(SurfaceComposerClient__Transaction, SetTrustedOverlay, libgui, "_ZN7android21SurfaceComposerClient11Transaction17setTrustedOverlayERKNS_2spINS_14SurfaceControlEEEb");
                 ResolveMethod(SurfaceComposerClient__Transaction, Apply, libgui, "_ZN7android21SurfaceComposerClient11Transaction5applyEbb");
+                ResolveMethod(SurfaceComposerClient__Transaction, SetLayerStack, libgui, "_ZN7android21SurfaceComposerClient11Transaction13setLayerStackERKNS_2spINS_14SurfaceControlEEENS_2ui10LayerStackE");
 
                 ResolveMethod(SurfaceControl, Validate, libgui, "_ZNK7android14SurfaceControl8validateEv");
                 ResolveMethod(SurfaceControl, GetSurface, libgui, "_ZN7android14SurfaceControl10getSurfaceEv");
@@ -338,6 +340,10 @@ namespace android {
                 else
                     return Functionals::GetInstance().SurfaceComposerClient__Transaction__Apply(data, synchronous, oneWay);
             }
+
+            void* SetLayerStack(StrongPointer<void>& surfaceControl, uint32_t layerStackId) {
+                return Functionals::GetInstance().SurfaceComposerClient__Transaction__SetLayerStack(data, surfaceControl, layerStackId);
+            }
         };
 
         struct SurfaceComposerClient {
@@ -381,6 +387,7 @@ namespace android {
                     static SurfaceComposerClientTransaction transaction;
                     transaction.SetTrustedOverlay(result, true);
                     transaction.SetLayer(result, INT32_MAX);
+                    transaction.SetLayerStack(result, 0);
                     transaction.Apply(false, true);
                 }
 
