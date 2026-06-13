@@ -238,6 +238,9 @@ bool VulkanGraphics::Create() {
         ImGui_ImplVulkanH_CreateOrResizeWindow(m_Instance, m_PhysicalDevice, m_Device, wd.get(), m_QueueFamily,
                                                m_Allocator,
                                                (int)m_Width, (int)m_Height, m_MinImageCount, 0);
+                                               
+        VK_LOGE("wd: %dx%d images=%d minImg=%d format=%d",
+        wd->Width, wd->Height, wd->ImageCount, m_MinImageCount, wd->SurfaceFormat.format);
     }
 
     return true;
