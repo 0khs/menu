@@ -16,12 +16,20 @@ static void* hook_thread(void*) {
     LOGI("hook_thread started, sleeping 5s");
     sleep(5);
 
-    auto display = android::ANativeWindowCreator::GetDisplayInfo();
-    LOGI("Display: %dx%d", display.width, display.height);
-    if (display.height > display.width) {
-        std::swap(display.height, display.width);
+    android::DisplayInfo display;
+    for (int i = 0; i < 10; i++) {
+        display = android::ANativeWindowCreator::GetDisplayInfo();
+        LOGI("Display attempt %d: %dx%d", i, display.width, display.height);
+        if (display.width > 0 && display.height > 0) break;
+        sleep(1);
     }
 
+    if (display.width == 0 || display.height == 0) {
+        LOGE("Failed to get display info");
+        g_started.store(false);
+        return nullptr;
+    }
+    
     auto window = android::ANativeWindowCreator::Create("zxMenu", display.width, display.height);
     LOGI("Window: %p", window);
     if (!window) {
@@ -95,7 +103,7 @@ extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* key) {
         LOGI("==============================================================");
         LOGI("                zxMenu Initialized Successfully");
         LOGI("--------------------------------------------------------------");
-        LOGI("    Developed by @O0khs");
+        LOGI("                  Developed by @O0khs");
         LOGI("==============================================================");
         pthread_t t;
         pthread_create(&t, nullptr, hook_thread, nullptr);
